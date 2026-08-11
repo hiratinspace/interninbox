@@ -14,9 +14,11 @@ import httpx
 
 from interninbox import __version__
 from interninbox import companies as companies_mod
+from interninbox import registry as registry_mod
 from interninbox.adapters import ADAPTERS, usajobs
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
+    Company,
     Config,
     ConfigError,
     Filters,
@@ -166,6 +168,19 @@ def _effective_filters(config: Config) -> Filters:
     )
 
 
+def _effective_companies(config: Config) -> tuple[Company, ...]:
+    """Config companies first, then the chosen registry tier (deduped)."""
+    companies = list(config.companies)
+    if config.registry != "none":
+        listed = {company.label for company in companies}
+        for entry in registry_mod.select(config.registry):
+            company = Company(ats=entry.ats, slug=entry.slug)
+            if company.label not in listed:
+                listed.add(company.label)
+                companies.append(company)
+    return tuple(companies)
+
+
 def _cmd_scan(
     args: argparse.Namespace,
     *,
@@ -179,10 +194,18 @@ def _cmd_scan(
     if state.warning:
         print(f"warning: {state.warning}", file=sys.stderr)
 
+    companies = _effective_companies(config)
+    if len(companies) >= 20:
+        print(
+            f"scanning {len(companies)} boards — roughly "
+            f"{registry_mod.estimate_label(len(companies))} at polite pacing",
+            file=sys.stderr,
+        )
+
     progress = sys.stderr.isatty()
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
-        _scan_boards(config, fetcher, result, progress=progress)
+        _scan_boards(companies, fetcher, result, progress=progress)
         _scan_usajobs(config, fetcher, env, result, progress=progress)
 
     result.listings_checked = len(result.listings)
@@ -219,10 +242,10 @@ def _cmd_scan(
 
 
 def _scan_boards(
-    config: Config, fetcher: Fetcher, result: ScanResult, *, progress: bool = False
+    companies: tuple[Company, ...], fetcher: Fetcher, result: ScanResult, *, progress: bool = False
 ) -> None:
-    total = len(config.companies)
-    for index, company in enumerate(config.companies, start=1):
+    total = len(companies)
+    for index, company in enumerate(companies, start=1):
         if progress:
             print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
         adapter_fetch = ADAPTERS[company.ats]

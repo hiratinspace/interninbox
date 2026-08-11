@@ -330,7 +330,7 @@ def test_progress_lines_written_when_tty(
     config = load_config(write_config(tmp_path, THREE_BOARDS))
     result = ScanResult()
     with Fetcher(transport=make_transport(route), sleep=lambda _: None) as fetcher:
-        _scan_boards(config, fetcher, result, progress=True)
+        _scan_boards(config.companies, fetcher, result, progress=True)
     err = capsys.readouterr().err
     assert "[1/3] greenhouse:aurora-widgets ..." in err
     assert "[3/3] ashby:harborline ..." in err
@@ -455,3 +455,44 @@ def test_roles_command_lists_presets(capsys: pytest.CaptureFixture[str]) -> None
     out = capsys.readouterr().out
     assert "cybersecurity" in out and "finance" in out
     assert "security" in out  # keywords are shown, not just names
+
+
+def test_registry_tier_unions_with_config_companies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    # Shrink the registry to fixture-backed boards; one duplicates the config.
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (
+            RegistryCompany("ashby", "harborline", "Harborline", "startup", ()),
+            RegistryCompany("lever", "cobalt-cartography", "Cobalt", "startup", ()),
+        ),
+    )
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nregistry = "all"\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    # harborline deduped (config first), cobalt added from the registry.
+    assert "across 2 companies" in out
+    assert "Cartography Engineering Intern" in out
+
+
+def test_large_scan_prints_scale_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    entries = tuple(
+        RegistryCompany("ashby", f"board-{i}", f"Board {i}", "startup", ()) for i in range(25)
+    )
+    monkeypatch.setattr("interninbox.registry.REGISTRY", entries)
+
+    def all_empty(request: httpx.Request) -> httpx.Response:
+        return json_response({"jobs": []})
+
+    config = write_config(tmp_path, 'registry = "all"\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(all_empty),
+                **NO_SLEEP) == 0
+    err = capsys.readouterr().err
+    assert "25 boards" in err and "~" in err  # scale + rough estimate disclosed

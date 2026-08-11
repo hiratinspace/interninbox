@@ -152,3 +152,21 @@ def test_filters_roles_parsed_and_validated(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigError, match="wizardry"):
         load_config(path)
+
+
+def test_registry_key_parsed_and_validated(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text('companies = ["greenhouse:stripe"]\nregistry = "top"\n', encoding="utf-8")
+    assert load_config(path).registry == "top"
+
+    path.write_text('companies = ["greenhouse:stripe"]\nregistry = "everything"\n',
+                    encoding="utf-8")
+    with pytest.raises(ConfigError, match="registry"):
+        load_config(path)
+
+
+def test_registry_alone_is_something_to_scan(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text('registry = "top"\n', encoding="utf-8")
+    config = load_config(path)  # no companies, no usajobs — registry suffices
+    assert config.companies == () and config.registry == "top"

@@ -51,6 +51,7 @@ class UsaJobsConfig:
 class Config:
     companies: tuple[Company, ...]
     filters: Filters = field(default_factory=Filters)
+    registry: str = "none"
     usajobs: UsaJobsConfig = field(default_factory=UsaJobsConfig)
     path: Path | None = None
 
@@ -144,6 +145,12 @@ def _parse_usajobs(raw: object) -> UsaJobsConfig:
     )
 
 
+def _registry_tiers() -> tuple[str, ...]:
+    from interninbox.registry import TIERS
+
+    return TIERS
+
+
 def load_config(path: Path) -> Config:
     """Read and validate the config file at `path`."""
     if not path.is_file():
@@ -173,15 +180,24 @@ def load_config(path: Path) -> Config:
         seen.add(company.label)
 
     usajobs_cfg = _parse_usajobs(data.get("usajobs"))
-    if not companies and not usajobs_cfg.enabled:
+
+    registry = data.get("registry", "none")
+    if not isinstance(registry, str) or registry not in ("none", *_registry_tiers()):
+        raise ConfigError(
+            'registry must be one of "none", "top", "all", "large", "startups"'
+        )
+
+    if not companies and not usajobs_cfg.enabled and registry == "none":
         raise ConfigError(
             f"{path} configures nothing to scan — add a `companies` list "
-            "(e.g. companies = [\"greenhouse:stripe\"]) or enable [usajobs]"
+            "(e.g. companies = [\"greenhouse:stripe\"]), set registry = \"top\", "
+            "or enable [usajobs]"
         )
 
     return Config(
         companies=companies,
         filters=_parse_filters(data.get("filters")),
+        registry=registry,
         usajobs=usajobs_cfg,
         path=path,
     )
@@ -201,6 +217,11 @@ companies = [
     "lever:plaid",
     "ashby:linear",
 ]
+
+# Also sweep the bundled curated registry: "none" (default), "top" (~50
+# well-known boards), "all", "large", or "startups". `interninbox companies`
+# lists what's in it. Big sweeps take a couple of minutes — politeness.
+# registry = "none"
 
 [filters]
 # Extra title keywords to treat as an internship signal, in addition to the
