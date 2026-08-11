@@ -74,7 +74,7 @@ uv run interninbox --help
 ```
 
 Requires Python 3.11+. PyPI publication is planned; after that,
-`pipx install interninbox-cli` will work directly.
+`pipx install interninbox` will work directly.
 
 ## Quickstart
 
