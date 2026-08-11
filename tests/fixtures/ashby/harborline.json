@@ -1,0 +1,35 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "1b2c3d4e-1111-4222-8333-444455556666",
+      "title": "Platform Engineering Intern (Fall)",
+      "jobUrl": "https://jobs.example-ashby.test/harborline/1b2c3d4e",
+      "applyUrl": "https://jobs.example-ashby.test/harborline/1b2c3d4e/application",
+      "location": "Seattle, WA",
+      "workplaceType": "Hybrid",
+      "publishedAt": "2026-08-03T16:00:00+00:00",
+      "descriptionHtml": "<p>Fictional synthetic fixture text for Harborline.</p>"
+    },
+    {
+      "id": "1b2c3d4e-2222-4222-8333-444455556666",
+      "title": "Design Intern",
+      "jobUrl": "https://jobs.example-ashby.test/harborline/2c3d4e5f",
+      "applyUrl": "https://jobs.example-ashby.test/harborline/2c3d4e5f/application",
+      "location": "North America",
+      "workplaceType": "Remote",
+      "publishedAt": "2026-07-30T12:00:00+00:00",
+      "descriptionHtml": "<p>Fictional synthetic fixture text.</p>"
+    },
+    {
+      "id": "1b2c3d4e-3333-4222-8333-444455556666",
+      "title": "Principal Infrastructure Engineer",
+      "jobUrl": "https://jobs.example-ashby.test/harborline/3d4e5f6a",
+      "applyUrl": "https://jobs.example-ashby.test/harborline/3d4e5f6a/application",
+      "location": "Seattle, WA",
+      "workplaceType": "OnSite",
+      "publishedAt": "2026-06-01T12:00:00+00:00",
+      "descriptionHtml": "<p>Fictional synthetic fixture text.</p>"
+    }
+  ]
+}

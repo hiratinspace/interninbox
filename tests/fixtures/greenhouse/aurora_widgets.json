@@ -1,0 +1,49 @@
+{
+  "jobs": [
+    {
+      "id": 9100001,
+      "title": "Software Engineering Intern (Summer 2027)",
+      "absolute_url": "https://boards.example-greenhouse.test/aurora-widgets/jobs/9100001",
+      "location": { "name": "New York, NY" },
+      "first_published": "2026-08-01T09:00:00-04:00",
+      "requisition_id": "REQ-1",
+      "content": "&lt;p&gt;Fictional synthetic fixture text for Aurora Widgets.&lt;/p&gt;"
+    },
+    {
+      "id": 9100002,
+      "title": "Senior Backend Engineer, Widget Platform",
+      "absolute_url": "https://boards.example-greenhouse.test/aurora-widgets/jobs/9100002",
+      "location": { "name": "Denver, CO" },
+      "first_published": "2026-07-15T09:00:00-06:00",
+      "requisition_id": "REQ-2",
+      "content": "&lt;p&gt;Fictional synthetic fixture text.&lt;/p&gt;"
+    },
+    {
+      "id": 9100003,
+      "title": "Internship Program Manager, University Recruiting",
+      "absolute_url": "https://boards.example-greenhouse.test/aurora-widgets/jobs/9100003",
+      "location": { "name": "New York, NY" },
+      "first_published": "2026-07-20T09:00:00-04:00",
+      "requisition_id": "REQ-3",
+      "content": "&lt;p&gt;Fictional synthetic fixture text.&lt;/p&gt;"
+    },
+    {
+      "id": 9100004,
+      "title": "International Sales Associate",
+      "absolute_url": "https://boards.example-greenhouse.test/aurora-widgets/jobs/9100004",
+      "location": { "name": "Austin, TX" },
+      "first_published": "2026-07-22T09:00:00-05:00",
+      "requisition_id": "REQ-4",
+      "content": "&lt;p&gt;Fictional synthetic fixture text.&lt;/p&gt;"
+    },
+    {
+      "id": 9100005,
+      "title": "Data Science Intern",
+      "absolute_url": "https://boards.example-greenhouse.test/aurora-widgets/jobs/9100005",
+      "location": null,
+      "first_published": "not-a-date",
+      "requisition_id": "",
+      "content": ""
+    }
+  ]
+}

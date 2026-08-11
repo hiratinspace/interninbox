@@ -1,0 +1,29 @@
+[
+  {
+    "id": "d3adbeef-0001-4000-8000-000000000001",
+    "text": "Cartography Engineering Intern",
+    "hostedUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0001",
+    "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0001/apply",
+    "createdAt": 1785592800000,
+    "workplaceType": "onsite",
+    "categories": { "location": "San Francisco, CA", "team": "Engineering" }
+  },
+  {
+    "id": "d3adbeef-0002-4000-8000-000000000002",
+    "text": "Staff Software Engineer, Atlas Renderer",
+    "hostedUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0002",
+    "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0002/apply",
+    "createdAt": 1782914400000,
+    "workplaceType": "hybrid",
+    "categories": { "location": "Chicago, IL", "team": "Engineering" }
+  },
+  {
+    "id": "d3adbeef-0003-4000-8000-000000000003",
+    "text": "Geospatial Data Intern",
+    "hostedUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0003",
+    "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0003/apply",
+    "createdAt": 1786024800000,
+    "workplaceType": "remote",
+    "categories": { "location": "United States", "team": "Data" }
+  }
+]

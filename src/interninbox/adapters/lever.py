@@ -1,0 +1,66 @@
+"""Lever Postings API adapter.
+
+Endpoint: https://api.lever.co/v0/postings/{slug}?mode=json
+(documented, public, no auth). Top-level shape is a bare JSON array.
+
+Field notes:
+  - the title field is called `text`;
+  - `hostedUrl` is the public posting page (preferred over `applyUrl` for
+    display);
+  - `categories.location` is a single string;
+  - `createdAt` is epoch *milliseconds*.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+
+from interninbox.fetch import Fetcher
+from interninbox.models import AdapterError, Listing
+
+BASE_URL = "https://api.lever.co/v0/postings/{slug}"
+
+SOURCE = "lever"
+
+
+def fetch(fetcher: Fetcher, slug: str) -> list[Listing]:
+    payload = fetcher.get_json(BASE_URL.format(slug=slug), params={"mode": "json"})
+    return parse(payload, slug)
+
+
+def parse(payload: object, slug: str) -> list[Listing]:
+    if not isinstance(payload, list):
+        raise AdapterError(f"unexpected Lever response shape for {slug!r} (not a JSON array)")
+    listings: list[Listing] = []
+    for posting in payload:
+        try:
+            listings.append(_parse_posting(posting, slug))
+        except (KeyError, TypeError) as exc:
+            raise AdapterError(f"malformed Lever posting entry for {slug!r}: {exc}") from exc
+    return listings
+
+
+def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
+    locations: tuple[str, ...] = ()
+    categories = posting.get("categories")
+    if isinstance(categories, dict) and categories.get("location"):
+        locations = (str(categories["location"]),)
+    workplace_type = posting.get("workplaceType")
+    if isinstance(workplace_type, str) and workplace_type.lower() == "remote":
+        if not any("remote" in location.lower() for location in locations):
+            locations = (*locations, "Remote")
+
+    posted_at: dt.datetime | None = None
+    created_at = posting.get("createdAt")
+    if isinstance(created_at, int | float):
+        posted_at = dt.datetime.fromtimestamp(created_at / 1000, tz=dt.UTC)
+
+    return Listing(
+        company=slug,
+        source=SOURCE,
+        listing_id=str(posting["id"]),
+        title=str(posting["text"]),
+        url=str(posting["hostedUrl"]),
+        locations=locations,
+        posted_at=posted_at,
+    )

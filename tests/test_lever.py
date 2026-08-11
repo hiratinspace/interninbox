@@ -1,0 +1,56 @@
+"""Lever adapter parse + fetch tests (synthetic fixtures only)."""
+
+import datetime as dt
+
+import pytest
+from conftest import json_response, load_fixture, make_transport
+
+from interninbox.adapters import lever
+from interninbox.models import AdapterError
+
+
+def test_parse_full_board() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    assert len(listings) == 3
+    first = listings[0]
+    assert first.source == "lever"
+    assert first.title == "Cartography Engineering Intern"
+    assert first.url == "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0001"
+    assert first.locations == ("San Francisco, CA",)
+
+
+def test_parse_epoch_milliseconds_created_at() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    assert listings[0].posted_at == dt.datetime.fromtimestamp(1785592800, tz=dt.UTC)
+
+
+def test_parse_remote_workplace_type_adds_remote_location() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    remote = listings[2]
+    assert remote.locations == ("United States", "Remote")
+
+
+def test_parse_empty_array() -> None:
+    assert lever.parse([], "cobalt-cartography") == []
+
+
+def test_parse_not_a_list_raises() -> None:
+    with pytest.raises(AdapterError, match="not a JSON array"):
+        lever.parse(load_fixture("lever/not_a_list.json"), "cobalt-cartography")
+
+
+def test_parse_malformed_posting_raises() -> None:
+    with pytest.raises(AdapterError, match="malformed Lever posting"):
+        lever.parse([{"id": "x"}], "cobalt-cartography")  # missing text/hostedUrl
+
+
+def test_fetch_hits_documented_endpoint(instant_fetcher) -> None:
+    seen: list[str] = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return json_response([])
+
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        assert lever.fetch(fetcher, "cobalt-cartography") == []
+    assert seen == ["https://api.lever.co/v0/postings/cobalt-cartography?mode=json"]
