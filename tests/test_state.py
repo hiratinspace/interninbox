@@ -1,5 +1,6 @@
 """Seen-state behavior: first run, subsequent runs, corruption."""
 
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -7,6 +8,8 @@ import pytest
 from conftest import make_listing
 
 from interninbox.state import load_state
+
+_NOW = dt.datetime(2026, 8, 11, tzinfo=dt.UTC)
 
 
 def test_missing_state_everything_new_no_warning(tmp_path: Path) -> None:
@@ -77,3 +80,59 @@ def test_failed_save_preserves_previous_state_file(
         state.save(path)
     monkeypatch.undo()
     assert "old" in json.loads(path.read_text(encoding="utf-8"))["seen"]
+
+
+def test_stale_entries_are_pruned_on_save(tmp_path: Path) -> None:
+    path = tmp_path / ".interninbox-state.json"
+    old = _NOW - dt.timedelta(days=400)  # beyond the retention window
+    state = load_state(path)
+    state.record([make_listing(listing_id="stale")], now=old)
+    state.record([make_listing(listing_id="fresh")], now=_NOW)
+    state.save(path, now=_NOW, retention_days=365)
+
+    reloaded = load_state(path)
+    assert reloaded.is_new(make_listing(listing_id="stale"))  # pruned -> new again
+    assert not reloaded.is_new(make_listing(listing_id="fresh"))  # within retention
+
+
+def test_concurrent_writers_are_merged_not_clobbered(tmp_path: Path) -> None:
+    # Two overlapping processes both load the (empty) file, each record a
+    # different listing; the second save must not lose the first's write.
+    path = tmp_path / ".interninbox-state.json"
+    proc_a = load_state(path)
+    proc_b = load_state(path)
+    proc_a.record([make_listing(listing_id="A")], now=_NOW)
+    proc_b.record([make_listing(listing_id="B")], now=_NOW)
+    proc_b.save(path, now=_NOW)  # B writes first
+    proc_a.save(path, now=_NOW)  # A must union-merge, not clobber B
+
+    reloaded = load_state(path)
+    assert not reloaded.is_new(make_listing(listing_id="A"))
+    assert not reloaded.is_new(make_listing(listing_id="B"))
+
+
+def test_saved_state_is_v2_and_stores_no_url(tmp_path: Path) -> None:
+    path = tmp_path / ".interninbox-state.json"
+    state = load_state(path)
+    state.record([make_listing(url="https://tracker.example/secret-path")], now=_NOW)
+    state.save(path, now=_NOW)
+    raw = path.read_text(encoding="utf-8")
+    assert "tracker.example" not in raw  # the dead url field is gone
+    assert json.loads(raw)["version"] == 2
+
+
+def test_v1_state_file_still_recognized_and_upgraded(tmp_path: Path) -> None:
+    path = tmp_path / ".interninbox-state.json"
+    listing = make_listing(listing_id="42")
+    path.write_text(
+        json.dumps({"version": 1, "seen": {listing.key: {"url": "u"}}}),
+        encoding="utf-8",
+    )
+    state = load_state(path)
+    assert state.warning is None
+    assert not state.is_new(listing)  # legacy entry recognized
+
+    state.save(path, now=_NOW)
+    reloaded = load_state(path)
+    assert not reloaded.is_new(listing)  # survives the upgrade
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
