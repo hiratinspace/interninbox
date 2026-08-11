@@ -72,6 +72,25 @@ def test_parse_item_maps_documented_fields() -> None:
     assert listing.posted_at is not None and listing.posted_at.tzinfo is not None
 
 
+def test_state_identity_is_stable_across_org_rename() -> None:
+    def announcement(org: str) -> dict:
+        return {
+            "MatchedObjectId": "800000001",
+            "MatchedObjectDescriptor": {
+                "PositionTitle": "Student Trainee (IT)",
+                "PositionURI": "https://example.test/ViewDetails/800000001",
+                "OrganizationName": org,
+            },
+        }
+
+    before = usajobs.parse_item(announcement("Bureau of Fictional Statistics"))
+    after = usajobs.parse_item(announcement("Bureau of Imaginary Statistics"))  # agency renamed
+    # Same control number -> same state key (no resurfacing as "new")...
+    assert before.key == after.key
+    # ...even though the displayed company still reflects the current org name.
+    assert before.company != after.company
+
+
 def test_parse_item_malformed_raises() -> None:
     with pytest.raises(AdapterError, match="malformed USAJOBS announcement"):
         usajobs.parse_item({"MatchedObjectId": "1"})  # no descriptor
