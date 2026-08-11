@@ -1,6 +1,6 @@
 [project]
 name = "interninbox"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Zero-API-key internship finder: list your target companies, run one command, get matching internships in your terminal."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -14,6 +14,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Office/Business",
 ]
 dependencies = ["httpx>=0.27"]
@@ -30,6 +31,9 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/interninbox/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/interninbox"]
