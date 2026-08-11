@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+import unicodedata
 
 from conftest import make_listing
 
@@ -139,3 +140,35 @@ def test_empty_table_explains_nothing_new() -> None:
     result = ScanResult(companies_scanned=1, listings_checked=10, listings_matched=4)
     text = format_table(result)
     assert "already seen" in text
+
+
+def _display_col(line: str, marker: str) -> int:
+    """Visual column (terminal cells) where `marker` starts in `line`."""
+    prefix = line[: line.index(marker)]
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in prefix)
+
+
+def test_table_aligns_columns_by_display_width_for_wide_chars() -> None:
+    # A CJK company name (each glyph is 2 cells wide) must not push the TITLE
+    # column out of visual alignment relative to an ASCII row.
+    result = ScanResult(
+        listings=[
+            make_listing(company="东京公司", title="Intern A", listing_id="1"),
+            make_listing(company="acme", title="Intern B", listing_id="2"),
+        ],
+        companies_scanned=1,
+    )
+    lines = format_table(result).splitlines()
+    header, wide_row, ascii_row = lines[0], lines[1], lines[2]
+    # "Intern A"/"Intern B" begin at the same terminal cell in both rows,
+    # and at the header's TITLE column.
+    assert _display_col(wide_row, "Intern") == _display_col(ascii_row, "Intern")
+    assert _display_col(ascii_row, "Intern") == _display_col(header, "TITLE")
+
+
+def test_truncate_counts_display_width_not_codepoints() -> None:
+    # 40 double-width glyphs = 80 cells; must be truncated to fit the column.
+    wide = "西" * 40
+    result = ScanResult(listings=[make_listing(locations=(wide,))], companies_scanned=1)
+    row = format_table(result).splitlines()[1]
+    assert "…" in row
