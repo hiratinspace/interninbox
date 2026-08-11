@@ -144,6 +144,8 @@ def load_config(path: Path) -> Config:
     try:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
+    except OSError as exc:
+        raise ConfigError(f"could not read {path}: {exc}") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
 
