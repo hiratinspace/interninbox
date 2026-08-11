@@ -48,6 +48,7 @@ optionally, the official **USAJOBS** API for federal Pathways internships.
 - [Scope, honestly](#scope-honestly)
 - [FAQ](#faq)
 - [Development](#development)
+- [Known issues](#known-issues)
 
 ---
 
@@ -310,6 +311,12 @@ recorded third-party data, ever ([provenance note](tests/fixtures/README.md)).
 
 Support is best-effort via GitHub issues; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Known issues
+
+Current limitations and rough edges are tracked honestly in
+[docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md); worth a look before you file a
+bug or tune your filters.
 
 ## License
 
