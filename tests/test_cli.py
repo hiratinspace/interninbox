@@ -349,3 +349,26 @@ def test_init_unwritable_directory_is_friendly(
     monkeypatch.setattr(Path, "write_text", deny)
     assert main(["init"], **NO_SLEEP) == 1
     assert "could not write" in capsys.readouterr().err
+
+
+def test_filter_loosening_does_not_flood_new_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Scan once with a filter that hides the Design Intern.
+    write_config(
+        tmp_path,
+        'companies = ["ashby:harborline"]\n[filters]\nexclude_keywords = ["design"]\n',
+    )
+    config = tmp_path / "interninbox.toml"
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    capsys.readouterr()
+    # Loosen the filter: the Design Intern was FETCHED before, so it is not "new".
+    write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    code = main(
+        ["scan", "--config", str(config), "--new-only"],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Design Intern" not in out

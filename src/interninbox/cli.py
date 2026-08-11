@@ -161,10 +161,10 @@ def _cmd_scan(
     matched = [listing for listing in result.listings if matches(listing, config.filters)]
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
+    # Record EVERYTHING fetched — flag or not — so "new" means "never fetched
+    # before": loosening a filter later cannot flood --new-only with old posts.
+    state.record(result.listings)
     result.listings = shown
-
-    # Always update state — flag or not — so "new" means "since last scan".
-    state.record(matched)
     try:
         state.save(state_path)
     except OSError as exc:
