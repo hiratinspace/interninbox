@@ -177,6 +177,43 @@ def test_corrupt_state_warns_and_scan_succeeds(
     assert "Platform Engineering Intern (Fall)" in captured.out
 
 
+def test_two_configs_in_one_dir_have_separate_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Non-default config names get their own state file, so --new-only under
+    # one config does not suppress listings first seen under the other.
+    cfg_a = tmp_path / "work.toml"
+    cfg_a.write_text('companies = ["ashby:harborline"]', encoding="utf-8")
+    cfg_b = tmp_path / "personal.toml"
+    cfg_b.write_text('companies = ["ashby:harborline"]', encoding="utf-8")
+
+    assert main(["scan", "--config", str(cfg_a)], transport=make_transport(route), **NO_SLEEP) == 0
+    capsys.readouterr()
+    # First --new-only scan of the *other* config must still see the listings.
+    code = main(
+        ["scan", "--config", str(cfg_b), "--new-only"],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Platform Engineering Intern (Fall)" in out  # not suppressed by cfg_a's state
+    assert (tmp_path / ".interninbox-state.work.json").is_file()
+    assert (tmp_path / ".interninbox-state.personal.json").is_file()
+    assert not (tmp_path / ".interninbox-state.json").exists()
+
+
+def test_default_config_keeps_plain_state_filename(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The default config name must keep the historical .interninbox-state.json
+    # (no silent break for existing users).
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    capsys.readouterr()
+    assert (tmp_path / ".interninbox-state.json").is_file()
+
+
 def test_state_path_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
     state_path = tmp_path / "custom" / "state.json"
