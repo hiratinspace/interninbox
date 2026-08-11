@@ -1,0 +1,37 @@
+{
+  "LanguageCode": "EN",
+  "SearchResult": {
+    "SearchResultCount": 2,
+    "SearchResultCountAll": 3,
+    "SearchResultItems": [
+      {
+        "MatchedObjectId": "800000002",
+        "MatchedObjectDescriptor": {
+          "PositionID": "FICT-27-002",
+          "PositionTitle": "Student Trainee (Engineering)",
+          "PositionURI": "https://www.usajobs.example.test/GetJob/ViewDetails/800000002",
+          "ApplyURI": ["https://www.usajobs.example.test/GetJob/Apply/800000002"],
+          "OrganizationName": "Bureau of Fictional Statistics",
+          "PositionLocation": [
+            { "LocationName": "Denver, Colorado", "CountryCode": "United States" }
+          ],
+          "PublicationStartDate": "2026-07-25T00:00:00Z"
+        }
+      },
+      {
+        "MatchedObjectId": "800000003",
+        "MatchedObjectDescriptor": {
+          "PositionID": "FICT-27-003",
+          "PositionTitle": "Pathways Intern - Data Analysis",
+          "PositionURI": "https://www.usajobs.example.test/GetJob/ViewDetails/800000003",
+          "ApplyURI": [],
+          "OrganizationName": "Fictional Aeronautics Administration",
+          "PositionLocation": [
+            { "LocationName": "Huntsville, Alabama", "CountryCode": "United States" }
+          ],
+          "PublicationStartDate": "2026-08-05T00:00:00Z"
+        }
+      }
+    ]
+  }
+}
