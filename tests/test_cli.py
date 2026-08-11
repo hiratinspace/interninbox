@@ -426,3 +426,16 @@ def test_usajobs_only_scan_works_end_to_end(
     captured = capsys.readouterr()
     assert code == 0
     assert "Student Trainee (Information Technology)" in captured.out
+
+
+def test_location_alias_full_state_name_matches_abbreviation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path,
+        'companies = ["ashby:harborline"]\n[filters]\nlocations = ["Washington"]\n',
+    )
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    # "Washington" expands to "WA", matching the board's "Seattle, WA".
+    assert "Platform Engineering Intern (Fall)" in out

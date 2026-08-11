@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
 import time
@@ -18,10 +19,12 @@ from interninbox.config import (
     DEFAULT_CONFIG_NAME,
     Config,
     ConfigError,
+    Filters,
     load_config,
 )
 from interninbox.fetch import Fetcher
 from interninbox.filters import matches
+from interninbox.locations import expand_location_terms
 from interninbox.models import AdapterError, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
 from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
@@ -138,6 +141,14 @@ def _cmd_companies(args: argparse.Namespace, **_: object) -> int:
     return 0
 
 
+def _effective_filters(config: Config) -> Filters:
+    """Scan-time filter view: config values with aliases expanded."""
+    return dataclasses.replace(
+        config.filters,
+        locations=expand_location_terms(config.filters.locations),
+    )
+
+
 def _cmd_scan(
     args: argparse.Namespace,
     *,
@@ -158,7 +169,8 @@ def _cmd_scan(
         _scan_usajobs(config, fetcher, env, result, progress=progress)
 
     result.listings_checked = len(result.listings)
-    matched = [listing for listing in result.listings if matches(listing, config.filters)]
+    filters = _effective_filters(config)
+    matched = [listing for listing in result.listings if matches(listing, filters)]
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
     # Record EVERYTHING fetched — flag or not — so "new" means "never fetched
