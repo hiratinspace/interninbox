@@ -67,12 +67,12 @@ def test_invalid_toml(tmp_path: Path) -> None:
 
 
 def test_missing_companies(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="no `companies` list"):
+    with pytest.raises(ConfigError, match="nothing to scan"):
         load_config(write(tmp_path, "[filters]\nremote_ok = true"))
 
 
 def test_empty_companies(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError, match="non-empty list"):
+    with pytest.raises(ConfigError, match="nothing to scan"):
         load_config(write(tmp_path, "companies = []"))
 
 
@@ -119,3 +119,20 @@ def test_match_keywords_parsed(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert load_config(path).filters.match_keywords == ("security",)
+
+
+def test_usajobs_only_config_is_valid(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text(
+        '[usajobs]\nenabled = true\nemail = "fixture@example.test"\n', encoding="utf-8"
+    )
+    config = load_config(path)
+    assert config.companies == ()
+    assert config.usajobs.enabled
+
+
+def test_nothing_to_scan_is_an_error(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text("companies = []\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="nothing to scan"):
+        load_config(path)

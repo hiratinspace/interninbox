@@ -109,3 +109,35 @@ def test_redirects_are_not_followed(instant_fetcher) -> None:
     with instant_fetcher(make_transport(redirecting)) as fetcher:
         with pytest.raises(AdapterError, match="unexpected redirect"):
             usajobs.fetch(fetcher, CFG, "fixture-api-key")
+
+
+def test_two_keywords_are_queried_separately_or_semantics(instant_fetcher) -> None:
+    # USAJOBS ANDs words inside one Keyword param; a keyword LIST means OR,
+    # so each keyword gets its own query (deduped on control number).
+    requests_seen: list[httpx.Request] = []
+    cfg = UsaJobsConfig(enabled=True, keywords=("software", "data"), email="fixture@example.test")
+    with instant_fetcher(make_transport(_paginated_handler(requests_seen))) as fetcher:
+        usajobs.fetch(fetcher, cfg, "fixture-api-key")
+    keywords = {request.url.params["Keyword"] for request in requests_seen}
+    assert keywords == {"software", "data"}
+
+
+def test_truncation_at_page_cap_warns(instant_fetcher) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params["Page"]
+        item = {
+            "MatchedObjectId": f"9000{page}",
+            "MatchedObjectDescriptor": {
+                "PositionTitle": "Student Trainee (Synthetic)",
+                "PositionURI": f"https://example.test/ViewDetails/9000{page}",
+                "OrganizationName": "Bureau of Fictional Statistics",
+            },
+        }
+        return json_response(
+            {"SearchResult": {"SearchResultCountAll": 10000, "SearchResultItems": [item]}}
+        )
+
+    warnings: list[str] = []
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        usajobs.fetch(fetcher, CFG, "fixture-api-key", warn=warnings.append)
+    assert warnings and "truncated" in warnings[0]

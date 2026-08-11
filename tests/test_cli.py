@@ -372,3 +372,20 @@ def test_filter_loosening_does_not_flood_new_only(
     out = capsys.readouterr().out
     assert code == 0
     assert "Design Intern" not in out
+
+
+def test_usajobs_only_scan_works_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path, '[usajobs]\nenabled = true\nemail = "fixture@example.test"\n'
+    )
+    code = main(
+        ["scan", "--config", str(config)],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={"USAJOBS_API_KEY": "fixture-key"},
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Student Trainee (Information Technology)" in captured.out

@@ -151,11 +151,9 @@ def load_config(path: Path) -> Config:
 
     raw_companies = data.get("companies")
     if raw_companies is None:
-        raise ConfigError(
-            f"{path} has no `companies` list — add e.g. companies = [\"greenhouse:stripe\"]"
-        )
-    if not isinstance(raw_companies, list) or not raw_companies:
-        raise ConfigError("`companies` must be a non-empty list of \"ats:slug\" strings")
+        raw_companies = []
+    if not isinstance(raw_companies, list):
+        raise ConfigError("`companies` must be a list of \"ats:slug\" strings")
 
     companies = tuple(parse_company(entry) for entry in raw_companies)
     seen: set[str] = set()
@@ -164,10 +162,17 @@ def load_config(path: Path) -> Config:
             raise ConfigError(f"duplicate company entry {company.label!r}")
         seen.add(company.label)
 
+    usajobs_cfg = _parse_usajobs(data.get("usajobs"))
+    if not companies and not usajobs_cfg.enabled:
+        raise ConfigError(
+            f"{path} configures nothing to scan — add a `companies` list "
+            "(e.g. companies = [\"greenhouse:stripe\"]) or enable [usajobs]"
+        )
+
     return Config(
         companies=companies,
         filters=_parse_filters(data.get("filters")),
-        usajobs=_parse_usajobs(data.get("usajobs")),
+        usajobs=usajobs_cfg,
         path=path,
     )
 
@@ -211,6 +216,6 @@ remote_ok = true
 # [usajobs]
 # enabled = true
 # email = "you@example.com"
-# keywords = ["software"]
+# keywords = ["software"]   # each keyword is searched separately (OR)
 # api_key_env = "USAJOBS_API_KEY"
 """

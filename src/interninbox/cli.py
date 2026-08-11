@@ -228,7 +228,7 @@ def _scan_usajobs(
     if progress:
         print("[usajobs] data.usajobs.gov ...", file=sys.stderr, flush=True)
     try:
-        listings = usajobs.fetch(fetcher, cfg, api_key)
+        listings = usajobs.fetch(fetcher, cfg, api_key, warn=result.warnings.append)
     except AdapterError as exc:
         result.companies_failed += 1
         result.warnings.append(f"usajobs: {exc}")
