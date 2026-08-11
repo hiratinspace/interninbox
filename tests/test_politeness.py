@@ -1,0 +1,124 @@
+"""Politeness guarantees: same-host delay, timeout config, single retry."""
+
+import httpx
+import pytest
+from conftest import json_response, make_transport
+
+from interninbox import USER_AGENT
+from interninbox.fetch import Fetcher
+from interninbox.models import AdapterError
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _fetcher(handler, clock: FakeClock, sleeps: list[float]) -> Fetcher:
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock.now += seconds
+
+    return Fetcher(transport=make_transport(handler), sleep=sleep, clock=clock)
+
+
+def test_same_host_requests_are_delayed() -> None:
+    clock = FakeClock()
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        clock.now += 0.1  # each request takes 100 ms
+        return json_response({})
+
+    with _fetcher(handler, clock, sleeps) as fetcher:
+        fetcher.get_json("https://api.lever.co/v0/postings/one")
+        fetcher.get_json("https://api.lever.co/v0/postings/two")
+    assert len(sleeps) == 1
+    assert sleeps[0] == pytest.approx(0.4)  # 500 ms minimum minus the 100 ms elapsed
+
+
+def test_different_hosts_are_not_delayed() -> None:
+    clock = FakeClock()
+    sleeps: list[float] = []
+    with _fetcher(lambda _: json_response({}), clock, sleeps) as fetcher:
+        fetcher.get_json("https://api.lever.co/v0/postings/one")
+        fetcher.get_json("https://boards-api.greenhouse.io/v1/boards/two/jobs")
+    assert sleeps == []
+
+
+def test_honest_user_agent_sent() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return json_response({})
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        fetcher.get_json("https://api.lever.co/v0/postings/one")
+    assert seen[0].headers["User-Agent"] == USER_AGENT
+    assert "interninbox-cli/" in USER_AGENT
+
+
+def test_transient_5xx_retried_once_then_succeeds() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(503)
+        return json_response({"ok": True})
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        assert fetcher.get_json("https://api.lever.co/v0/postings/one") == {"ok": True}
+    assert len(calls) == 2
+
+
+def test_persistent_5xx_fails_after_one_retry() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(500)
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        with pytest.raises(AdapterError, match="after retry"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
+    assert len(calls) == 2
+
+
+def test_network_error_retried_once() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        raise httpx.ConnectError("synthetic network failure", request=request)
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        with pytest.raises(AdapterError, match="network error"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
+    assert len(calls) == 2
+
+
+def test_4xx_is_not_retried_and_mentions_slug_check() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(404)
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        with pytest.raises(AdapterError, match="check the slug"):
+            fetcher.get_json("https://api.lever.co/v0/postings/nope")
+    assert len(calls) == 1
+
+
+def test_non_json_body_raises_adapter_error() -> None:
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, text="Not Found")),
+        sleep=lambda _: None,
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="not valid JSON"):
+            fetcher.get_json("https://api.ashbyhq.com/posting-api/job-board/garbage")
