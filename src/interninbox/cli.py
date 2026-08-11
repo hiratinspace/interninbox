@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
 import time
@@ -11,19 +12,24 @@ from pathlib import Path
 
 import httpx
 
-from interninbox import __version__
+from interninbox import __version__, wizard
 from interninbox import companies as companies_mod
+from interninbox import registry as registry_mod
 from interninbox.adapters import ADAPTERS, usajobs
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
+    Company,
     Config,
     ConfigError,
+    Filters,
     load_config,
 )
 from interninbox.fetch import Fetcher
 from interninbox.filters import matches
+from interninbox.locations import expand_location_terms
 from interninbox.models import AdapterError, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
+from interninbox.roles import expand_roles
 from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
 
 
@@ -82,12 +88,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"path to the seen-listings state file (default: {STATE_FILE_NAME} next to "
         "the config, or a name derived from a non-default config filename)",
     )
+    scan_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="ask location/role/companies questions before scanning "
+        "(automatic on a terminal when no config exists)",
+    )
     scan_parser.set_defaults(func=_cmd_scan)
 
     companies_parser = subparsers.add_parser(
         "companies", help="print a starter list of well-known companies"
     )
     companies_parser.set_defaults(func=_cmd_companies)
+
+    roles_parser = subparsers.add_parser("roles", help="print the role presets")
+    roles_parser.set_defaults(func=_cmd_roles)
 
     return parser
 
@@ -98,13 +113,16 @@ def main(
     transport: httpx.BaseTransport | None = None,
     sleep: Callable[[float], None] = time.sleep,
     env: Mapping[str, str] | None = None,
+    input_fn: Callable[[str], str] | None = None,
 ) -> int:
-    """CLI entry. `transport`, `sleep`, and `env` are injectable for tests."""
+    """CLI entry. `transport`, `sleep`, `env`, `input_fn` are injectable for tests."""
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         resolved_env = env if env is not None else os.environ
-        return args.func(args, transport=transport, sleep=sleep, env=resolved_env)
+        return args.func(
+            args, transport=transport, sleep=sleep, env=resolved_env, input_fn=input_fn
+        )
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -138,27 +156,96 @@ def _cmd_companies(args: argparse.Namespace, **_: object) -> int:
     return 0
 
 
+def _cmd_roles(args: argparse.Namespace, **_: object) -> int:
+    from interninbox import roles as roles_mod
+
+    print(roles_mod.render())
+    return 0
+
+
+def _effective_filters(config: Config) -> Filters:
+    """Scan-time filter view: aliases expanded, role presets merged in."""
+    role_keywords = expand_roles(config.filters.roles)
+    merged = config.filters.match_keywords + tuple(
+        keyword for keyword in role_keywords
+        if keyword not in config.filters.match_keywords
+    )
+    return dataclasses.replace(
+        config.filters,
+        match_keywords=merged,
+        locations=expand_location_terms(config.filters.locations),
+    )
+
+
+def _effective_companies(config: Config) -> tuple[Company, ...]:
+    """Config companies first, then the chosen registry tier (deduped)."""
+    companies = list(config.companies)
+    if config.registry != "none":
+        listed = {company.label for company in companies}
+        for entry in registry_mod.select(config.registry):
+            company = Company(ats=entry.ats, slug=entry.slug)
+            if company.label not in listed:
+                listed.add(company.label)
+                companies.append(company)
+    return tuple(companies)
+
+
 def _cmd_scan(
     args: argparse.Namespace,
     *,
     transport: httpx.BaseTransport | None,
     sleep: Callable[[float], None],
     env: Mapping[str, str],
+    input_fn: Callable[[str], str] | None,
 ) -> int:
-    config = load_config(args.config)
+    wizard_wants = args.interactive or (
+        not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
+    )
+    answers = None
+    if wizard_wants:
+        ask = input_fn if input_fn is not None else input
+        existing = load_config(args.config) if args.config.is_file() else None
+        answers = wizard.run(
+            input_fn=ask,
+            print_fn=lambda line: print(line, file=sys.stderr),
+            config_companies=len(existing.companies) if existing else 0,
+        )
+        # Rebase on the existing config (or an empty one) so an --interactive
+        # run only overrides what the wizard actually asked about: locations,
+        # roles, and the registry tier. Everything else the user configured —
+        # exclude_keywords, match_keywords, remote_ok, [usajobs] — survives.
+        base = existing if existing is not None else Config(companies=())
+        config = dataclasses.replace(
+            base,
+            filters=dataclasses.replace(
+                base.filters, locations=answers.locations, roles=answers.roles
+            ),
+            registry=base.registry if answers.tier == "config" else answers.tier,
+        )
+    else:
+        config = load_config(args.config)
     state_path = args.state if args.state else default_state_path(args.config)
     state = load_state(state_path)
     if state.warning:
         print(f"warning: {state.warning}", file=sys.stderr)
 
+    companies = _effective_companies(config)
+    if len(companies) >= 20:
+        print(
+            f"scanning {len(companies)} boards — roughly "
+            f"{registry_mod.estimate_label(len(companies))} at polite pacing",
+            file=sys.stderr,
+        )
+
     progress = sys.stderr.isatty()
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
-        _scan_boards(config, fetcher, result, progress=progress)
+        _scan_boards(companies, fetcher, result, progress=progress)
         _scan_usajobs(config, fetcher, env, result, progress=progress)
 
     result.listings_checked = len(result.listings)
-    matched = [listing for listing in result.listings if matches(listing, config.filters)]
+    filters = _effective_filters(config)
+    matched = [listing for listing in result.listings if matches(listing, filters)]
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
     # Record EVERYTHING fetched — flag or not — so "new" means "never fetched
@@ -182,6 +269,14 @@ def _cmd_scan(
     else:
         print(format_table(result))
 
+    if answers is not None and not args.config.is_file() and answers.tier != "config":
+        ask = input_fn if input_fn is not None else input
+        reply = ask(f"Save these choices to {args.config}? [y/N] ").strip().lower()
+        if reply in ("y", "yes"):
+            args.config.write_text(wizard.render_config(answers), encoding="utf-8")
+            print(f"Wrote {args.config} — next time, plain `interninbox scan` "
+                  "uses it.", file=sys.stderr)
+
     attempted = result.companies_scanned + result.companies_failed
     if attempted and result.companies_scanned == 0:
         print("error: every configured company failed — is the network down?", file=sys.stderr)
@@ -190,10 +285,10 @@ def _cmd_scan(
 
 
 def _scan_boards(
-    config: Config, fetcher: Fetcher, result: ScanResult, *, progress: bool = False
+    companies: tuple[Company, ...], fetcher: Fetcher, result: ScanResult, *, progress: bool = False
 ) -> None:
-    total = len(config.companies)
-    for index, company in enumerate(config.companies, start=1):
+    total = len(companies)
+    for index, company in enumerate(companies, start=1):
         if progress:
             print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
         adapter_fetch = ADAPTERS[company.ats]

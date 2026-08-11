@@ -114,14 +114,17 @@ def _passes_locations(listing: Listing, filters: Filters) -> bool:
 
 
 def _location_contains(location: str, want: str) -> bool:
-    """Whole-word (not substring) location match.
+    """Whole-word location match; lookarounds only at word-character edges.
 
-    `(?<!\\w)...(?!\\w)` instead of `\\b...\\b` so a term ending in
-    punctuation ("D.C.") still anchors: "NY" no longer matches "Su**nny**vale",
-    while ", NY" and "New York, NY" still match. Alias gaps ("NYC" vs
-    "New York") remain — location strings are per-ATS free text (see M4).
+    A term that starts or ends in punctuation anchors itself: ", CA" (an
+    alias expansion) must match "San Francisco, CA" even though a word
+    character precedes the comma, and "D.C." keeps matching as before.
     """
-    return re.search(rf"(?<!\w){re.escape(want)}(?!\w)", location, re.IGNORECASE) is not None
+    if not want:
+        return False
+    prefix = r"(?<!\w)" if (want[0].isalnum() or want[0] == "_") else ""
+    suffix = r"(?!\w)" if (want[-1].isalnum() or want[-1] == "_") else ""
+    return re.search(f"{prefix}{re.escape(want)}{suffix}", location, re.IGNORECASE) is not None
 
 
 def matches(listing: Listing, filters: Filters) -> bool:

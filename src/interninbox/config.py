@@ -34,6 +34,7 @@ class Filters:
     include_keywords: tuple[str, ...] = ()
     exclude_keywords: tuple[str, ...] = ()
     match_keywords: tuple[str, ...] = ()
+    roles: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
     remote_ok: bool = True
 
@@ -50,6 +51,7 @@ class UsaJobsConfig:
 class Config:
     companies: tuple[Company, ...]
     filters: Filters = field(default_factory=Filters)
+    registry: str = "none"
     usajobs: UsaJobsConfig = field(default_factory=UsaJobsConfig)
     path: Path | None = None
 
@@ -99,10 +101,19 @@ def _parse_filters(raw: object) -> Filters:
         raise ConfigError("[filters] must be a table")
     include = _string_list(raw.get("include_keywords"), where="filters.include_keywords")
     exclude = _string_list(raw.get("exclude_keywords"), where="filters.exclude_keywords")
+    roles = _string_list(raw.get("roles"), where="filters.roles")
+    if roles:
+        from interninbox.roles import expand_roles
+
+        try:
+            expand_roles(roles)  # validate names now, fail with a friendly message
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
     return Filters(
         include_keywords=include,
         exclude_keywords=exclude,
         match_keywords=_string_list(raw.get("match_keywords"), where="filters.match_keywords"),
+        roles=roles,
         locations=_string_list(raw.get("locations"), where="filters.locations"),
         remote_ok=_boolean(raw.get("remote_ok"), where="filters.remote_ok", default=True),
     )
@@ -134,6 +145,12 @@ def _parse_usajobs(raw: object) -> UsaJobsConfig:
     )
 
 
+def _registry_tiers() -> tuple[str, ...]:
+    from interninbox.registry import TIERS
+
+    return TIERS
+
+
 def load_config(path: Path) -> Config:
     """Read and validate the config file at `path`."""
     if not path.is_file():
@@ -163,15 +180,24 @@ def load_config(path: Path) -> Config:
         seen.add(company.label)
 
     usajobs_cfg = _parse_usajobs(data.get("usajobs"))
-    if not companies and not usajobs_cfg.enabled:
+
+    registry = data.get("registry", "none")
+    if not isinstance(registry, str) or registry not in ("none", *_registry_tiers()):
+        raise ConfigError(
+            'registry must be one of "none", "top", "all", "large", "startups"'
+        )
+
+    if not companies and not usajobs_cfg.enabled and registry == "none":
         raise ConfigError(
             f"{path} configures nothing to scan — add a `companies` list "
-            "(e.g. companies = [\"greenhouse:stripe\"]) or enable [usajobs]"
+            "(e.g. companies = [\"greenhouse:stripe\"]), set registry = \"top\", "
+            "or enable [usajobs]"
         )
 
     return Config(
         companies=companies,
         filters=_parse_filters(data.get("filters")),
+        registry=registry,
         usajobs=usajobs_cfg,
         path=path,
     )
@@ -192,6 +218,11 @@ companies = [
     "ashby:linear",
 ]
 
+# Also sweep the bundled curated registry: "none" (default), "top" (~50
+# well-known boards), "all", "large", or "startups". `interninbox companies`
+# lists what's in it. Big sweeps take a couple of minutes — politeness.
+# registry = "none"
+
 [filters]
 # Extra title keywords to treat as an internship signal, in addition to the
 # built-in one (intern, internship, co-op, summer analyst, ...).
@@ -202,6 +233,9 @@ exclude_keywords = []
 # signal — "internship AND security". Whole-word, case-insensitive. This
 # NARROWS results; include_keywords above BROADENS them.
 match_keywords = []
+# Named role presets that narrow to a field — `interninbox roles` lists them.
+# Example: roles = ["cybersecurity"]  keeps only security internships.
+roles = []
 # Keep only listings whose location contains one of these as a whole word
 # (case-insensitive): "NY" matches "Albany, NY" but not "Sunnyvale". Empty =
 # keep every location. A listing that lists no location at all passes only

@@ -330,7 +330,7 @@ def test_progress_lines_written_when_tty(
     config = load_config(write_config(tmp_path, THREE_BOARDS))
     result = ScanResult()
     with Fetcher(transport=make_transport(route), sleep=lambda _: None) as fetcher:
-        _scan_boards(config, fetcher, result, progress=True)
+        _scan_boards(config.companies, fetcher, result, progress=True)
     err = capsys.readouterr().err
     assert "[1/3] greenhouse:aurora-widgets ..." in err
     assert "[3/3] ashby:harborline ..." in err
@@ -426,3 +426,134 @@ def test_usajobs_only_scan_works_end_to_end(
     captured = capsys.readouterr()
     assert code == 0
     assert "Student Trainee (Information Technology)" in captured.out
+
+
+def test_location_alias_full_state_name_matches_abbreviation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path,
+        'companies = ["ashby:harborline"]\n[filters]\nlocations = ["Washington"]\n',
+    )
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    # "Washington" expands to "WA", matching the board's "Seattle, WA".
+    assert "Platform Engineering Intern (Fall)" in out
+
+
+def test_roles_narrow_scan_results(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = write_config(tmp_path, THREE_BOARDS + '[filters]\nroles = ["software"]\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    assert "Software Engineering Intern (Summer 2027)" in out
+    assert "Platform Engineering Intern (Fall)" in out  # "platform" is a software keyword
+    assert "Cartography Engineering Intern" not in out  # no software keyword in title
+
+
+def test_roles_command_lists_presets(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["roles"], **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    assert "cybersecurity" in out and "finance" in out
+    assert "security" in out  # keywords are shown, not just names
+
+
+def test_registry_tier_unions_with_config_companies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    # Shrink the registry to fixture-backed boards; one duplicates the config.
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (
+            RegistryCompany("ashby", "harborline", "Harborline", "startup", ()),
+            RegistryCompany("lever", "cobalt-cartography", "Cobalt", "startup", ()),
+        ),
+    )
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nregistry = "all"\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    # harborline deduped (config first), cobalt added from the registry.
+    assert "across 2 companies" in out
+    assert "Cartography Engineering Intern" in out
+
+
+def test_large_scan_prints_scale_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    entries = tuple(
+        RegistryCompany("ashby", f"board-{i}", f"Board {i}", "startup", ()) for i in range(25)
+    )
+    monkeypatch.setattr("interninbox.registry.REGISTRY", entries)
+
+    def all_empty(request: httpx.Request) -> httpx.Response:
+        return json_response({"jobs": []})
+
+    config = write_config(tmp_path, 'registry = "all"\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(all_empty),
+                **NO_SLEEP) == 0
+    err = capsys.readouterr().err
+    assert "25 boards" in err and "~" in err  # scale + rough estimate disclosed
+
+
+def test_interactive_scan_without_config_runs_and_offers_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
+    )
+    monkeypatch.chdir(tmp_path)
+    # location blank, roles blank, companies -> [1] all, save? -> y
+    scripted = iter(["", "", "1", "y"])
+    code = main(
+        ["scan", "--interactive"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+        input_fn=lambda prompt: next(scripted),
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Platform Engineering Intern (Fall)" in captured.out
+    assert (tmp_path / "interninbox.toml").is_file()  # saved on request
+
+
+def test_interactive_save_declined_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
+    )
+    monkeypatch.chdir(tmp_path)
+    scripted = iter(["", "", "1", "n"])
+    code = main(
+        ["scan", "--interactive"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+        input_fn=lambda prompt: next(scripted),
+    )
+    capsys.readouterr()
+    assert code == 0
+    assert not (tmp_path / "interninbox.toml").exists()
+
+
+def test_missing_config_without_tty_still_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Non-interactive (cron/pipes): behavior is unchanged from today.
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml")],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    assert code == 1
+    assert "interninbox init" in capsys.readouterr().err

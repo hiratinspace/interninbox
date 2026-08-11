@@ -1,62 +1,24 @@
-"""A starter list of well-known companies with public job boards.
-
-Slugs were correct when written, but companies migrate ATSes — verify with a
-quick scan before relying on one (a wrong slug prints a one-line warning and
-never breaks the rest of the scan).
-"""
+"""`interninbox companies` — the curated registry, human-readable."""
 
 from __future__ import annotations
 
-# (ats, slug, display name)
-STARTER_COMPANIES: tuple[tuple[str, str, str], ...] = (
-    ("greenhouse", "airbnb", "Airbnb"),
-    ("greenhouse", "anthropic", "Anthropic"),
-    ("greenhouse", "asana", "Asana"),
-    ("greenhouse", "cloudflare", "Cloudflare"),
-    ("greenhouse", "coinbase", "Coinbase"),
-    ("greenhouse", "databricks", "Databricks"),
-    ("greenhouse", "datadog", "Datadog"),
-    ("greenhouse", "discord", "Discord"),
-    ("greenhouse", "dropbox", "Dropbox"),
-    ("greenhouse", "duolingo", "Duolingo"),
-    ("greenhouse", "figma", "Figma"),
-    ("greenhouse", "gitlab", "GitLab"),
-    ("greenhouse", "lyft", "Lyft"),
-    ("greenhouse", "mongodb", "MongoDB"),
-    ("greenhouse", "pinterest", "Pinterest"),
-    ("greenhouse", "reddit", "Reddit"),
-    ("greenhouse", "robinhood", "Robinhood"),
-    ("greenhouse", "roblox", "Roblox"),
-    ("greenhouse", "stripe", "Stripe"),
-    ("greenhouse", "twilio", "Twilio"),
-    ("greenhouse", "vercel", "Vercel"),
-    ("lever", "kraken", "Kraken"),
-    ("lever", "palantir", "Palantir"),
-    ("lever", "plaid", "Plaid"),
-    ("lever", "wealthfront", "Wealthfront"),
-    ("ashby", "cursor", "Cursor"),
-    ("ashby", "deel", "Deel"),
-    ("ashby", "linear", "Linear"),
-    ("ashby", "notion", "Notion"),
-    ("ashby", "openai", "OpenAI"),
-    ("ashby", "posthog", "PostHog"),
-    ("ashby", "ramp", "Ramp"),
-    ("ashby", "replit", "Replit"),
-    ("ashby", "zapier", "Zapier"),
-)
+from interninbox.registry import REGISTRY
 
 
 def render() -> str:
     lines = [
-        "Starter companies (copy the ats:slug entries you want into interninbox.toml):",
+        "Curated companies (copy the ats:slug entries you want into interninbox.toml,",
+        'or scan them all with `registry = "all"` / the wizard):',
         "",
     ]
-    width = max(len(f"{ats}:{slug}") for ats, slug, _ in STARTER_COMPANIES)
-    for ats, slug, name in STARTER_COMPANIES:
-        lines.append(f'  "{f"{ats}:{slug}"}"'.ljust(width + 6) + f"  # {name}")
+    width = max(len(f'"{entry.ats}:{entry.slug}"') for entry in REGISTRY)
+    for entry in sorted(REGISTRY, key=lambda e: (e.ats, e.slug)):
+        label = f'"{entry.ats}:{entry.slug}"'.ljust(width)
+        tags = ", ".join(entry.tags)
+        lines.append(f"  {label}  # {entry.name}  [{entry.size}]  {tags}")
     lines.append("")
     lines.append(
-        "Note: companies migrate ATSes — verify a slug with a scan; a wrong one just "
-        "prints a warning."
+        f"{len(REGISTRY)} companies, verified when authored — companies migrate ATSes, "
+        "so verify a slug with a scan; a wrong one just prints a warning."
     )
     return "\n".join(lines)
