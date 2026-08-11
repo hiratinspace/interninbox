@@ -58,3 +58,12 @@ def test_indiana_does_not_match_the_word_in() -> None:
     filters = Filters(locations=expand_location_terms(("Indiana",)))
     assert not matches(make_listing(locations=("in Germany",)), filters)
     assert matches(make_listing(locations=("Indianapolis, IN",)), filters)
+
+
+def test_country_alias_us_never_matches_the_pronoun() -> None:
+    # "United States"/"USA"/"US" must not inject a bare "US" that whole-word
+    # matches the pronoun "us" — same English-word hazard as the state codes.
+    for term in ("United States", "USA", "US"):
+        filters = Filters(locations=expand_location_terms((term,)))
+        assert not matches(make_listing(locations=("Come build with us",)), filters), term
+        assert matches(make_listing(locations=("New York, US",)), filters), term

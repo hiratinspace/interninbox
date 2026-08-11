@@ -38,6 +38,15 @@ _ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
     ("San Francisco", "SF"),
 )
 
+# Tokens that are also ordinary English words: only ever safe COMMA-ANCHORED
+# (", US" matches "Remote, US" but never the pronoun "us" in prose). State
+# codes are already anchored in _alias_map; this covers the alias groups.
+_ANCHOR_ONLY: frozenset[str] = frozenset({"us"})
+
+
+def _anchor(term: str) -> str:
+    return f", {term}" if term.lower() in _ANCHOR_ONLY else term
+
 
 def _alias_map() -> dict[str, tuple[str, ...]]:
     """lowercased term -> the extra spellings it expands to.
@@ -62,11 +71,16 @@ _ALIASES = _alias_map()
 
 
 def expand_location_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
-    """Each term, followed by its known aliases; deduped case-insensitively."""
+    """Each term, followed by its known aliases; deduped case-insensitively.
+
+    English-word tokens (e.g. "US") are comma-anchored wherever they appear —
+    even a user-typed one — so no expansion can match the pronoun "us".
+    """
     out: list[str] = []
     seen: set[str] = set()
     for term in terms:
         for candidate in (term, *_ALIASES.get(term.strip().lower(), ())):
+            candidate = _anchor(candidate)
             if candidate.lower() not in seen:
                 seen.add(candidate.lower())
                 out.append(candidate)
