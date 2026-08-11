@@ -106,8 +106,22 @@ def _passes_locations(listing: Listing, filters: Filters) -> bool:
     if not locations:
         # No stated location and the user asked for specific ones — drop.
         return False
-    wanted = [want.lower() for want in filters.locations]
-    return any(want in location.lower() for location in locations for want in wanted)
+    return any(
+        _location_contains(location, want)
+        for location in locations
+        for want in filters.locations
+    )
+
+
+def _location_contains(location: str, want: str) -> bool:
+    """Whole-word (not substring) location match.
+
+    `(?<!\\w)...(?!\\w)` instead of `\\b...\\b` so a term ending in
+    punctuation ("D.C.") still anchors: "NY" no longer matches "Su**nny**vale",
+    while ", NY" and "New York, NY" still match. Alias gaps ("NYC" vs
+    "New York") remain — location strings are per-ATS free text (see M4).
+    """
+    return re.search(rf"(?<!\w){re.escape(want)}(?!\w)", location, re.IGNORECASE) is not None
 
 
 def matches(listing: Listing, filters: Filters) -> bool:
