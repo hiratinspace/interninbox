@@ -15,6 +15,8 @@
 
 **Tech Stack:** Python ≥3.11, httpx (only runtime dep — do not add more), pytest + httpx.MockTransport (offline), ruff, uv, hatchling.
 
+**Revision 2 (adversarial self-review):** hardened against seven found weaknesses — the `LA` Louisiana/Los-Angeles alias collision (group dropped); English-word false positives from bare state codes (`OR`/`IN`/`ME`… now comma-anchored, with conditional lookarounds in `_location_contains` and behavioral tests that lock the rule in); a too-thin registry candidate pool (now ~132 with a concrete slug-discovery recovery path and `top`-rebalance instructions); `--interactive` destroying an existing config's untouched settings (now rebases via `dataclasses.replace`, preserving `exclude_keywords`/`match_keywords`/`remote_ok`/`[usajobs]`); a tautological wizard test (replaced with an `_effective_filters` end-to-end assertion); a stale absolute test-count claim (removed); and misc executor traps (misfiled registry row, `_REGISTRY_TIERS` naming, undocumented one-shot override path).
+
 ## Global Constraints
 
 - Work on branch `discovery-wizard` (created from up-to-date `main`; PR #7 is already merged).
@@ -32,28 +34,29 @@
 
 **Files:**
 - Create: `src/interninbox/locations.py`
-- Modify: `src/interninbox/cli.py` (effective-filters layer)
+- Modify: `src/interninbox/cli.py` (effective-filters layer), `src/interninbox/filters.py` (`_location_contains` conditional lookarounds)
 - Test: `tests/test_locations.py` (new), `tests/test_cli.py`
 
 **Interfaces:**
 - Produces: `locations.expand_location_terms(terms: tuple[str, ...]) -> tuple[str, ...]` — returns the input terms plus every known alias, order-preserving, case-insensitively deduped. `cli._effective_filters(config: Config) -> Filters` — the single place scan-time expansion happens (Task 2 extends it with roles; Task 5 reuses it).
+- **Safety rule (load-bearing):** a full state name expands to the COMMA-ANCHORED abbreviation (`"Oregon"` → `", OR"`), never the bare code — `OR`/`IN`/`ME`/`OK`/`HI` are English words and matching is case-insensitive, so a bare code would match "Remote in USA **or** Canada" (the exact M4 false-positive class this repo just fixed). The abbreviation→full-name direction (`"CA"` → `"California"`) is plain, since full names are unambiguous words. `_location_contains` must therefore apply its lookbehind/lookahead only when the term edge is a word character, or `", OR"` could never match (`(?<!\w)` fails after "Francisco").
 
 - [ ] **Step 1: Write the failing tests.** Create `tests/test_locations.py`:
 
 ```python
 """US-state / country alias expansion for location filters."""
 
+from conftest import make_listing
+
+from interninbox.config import Filters
+from interninbox.filters import matches
 from interninbox.locations import expand_location_terms
 
 
 def test_state_abbreviation_gains_full_name() -> None:
-    assert "California" in expand_location_terms(("CA",))
-    assert "CA" in expand_location_terms(("CA",))  # original term kept, first
-
-
-def test_full_name_gains_abbreviation() -> None:
-    assert "CA" in expand_location_terms(("California",))
-    assert "WA" in expand_location_terms(("washington",))  # case-insensitive lookup
+    expanded = expand_location_terms(("CA",))
+    assert "California" in expanded
+    assert expanded[0] == "CA"  # original term kept, first
 
 
 def test_common_aliases() -> None:
@@ -75,6 +78,32 @@ def test_no_duplicates_and_order_preserved() -> None:
 
 def test_empty_input_is_empty() -> None:
     assert expand_location_terms(()) == ()
+
+
+# Behavioral contracts through the real matcher — these are the tests that
+# would catch an unsafe expansion, so do not weaken them.
+
+def test_full_state_name_matches_abbreviated_board_location() -> None:
+    filters = Filters(locations=expand_location_terms(("California",)))
+    assert matches(make_listing(locations=("San Francisco, CA",)), filters)
+
+
+def test_abbreviation_matches_full_name_board_location() -> None:
+    filters = Filters(locations=expand_location_terms(("CA",)))
+    assert matches(make_listing(locations=("Sacramento, California",)), filters)
+
+
+def test_state_expansion_never_matches_english_words() -> None:
+    # "Oregon" -> ", OR" (comma-anchored), NOT the bare word "or".
+    filters = Filters(locations=expand_location_terms(("Oregon",)))
+    assert not matches(make_listing(locations=("Remote in USA or Canada",)), filters)
+    assert matches(make_listing(locations=("Portland, OR",)), filters)
+
+
+def test_indiana_does_not_match_the_word_in() -> None:
+    filters = Filters(locations=expand_location_terms(("Indiana",)))
+    assert not matches(make_listing(locations=("Remote in Germany",)), filters)
+    assert matches(make_listing(locations=("Indianapolis, IN",)), filters)
 ```
 
 And append to `tests/test_cli.py` (uses the ashby fixture's "Seattle, WA" jobs):
@@ -127,25 +156,34 @@ US_STATES: dict[str, str] = {
 
 # Groups of equivalent spellings beyond the states table. Each group expands
 # to all of its members whenever any member is used as a filter term.
+# NOTE: no ("Los Angeles", "LA") group — "LA" is Louisiana's USPS code, and a
+# "Los Angeles" query must never surface "New Orleans, LA" boards. "NY"/"SF"
+# are safe (not English words, no state collision beyond their own).
 _ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
     ("New York", "NYC", "NY"),
     ("United States", "USA", "US"),
     ("United Kingdom", "UK", "Great Britain"),
     ("Washington, D.C.", "Washington DC", "D.C.", "DC"),
     ("San Francisco", "SF"),
-    ("Los Angeles", "LA"),
 )
 
 
 def _alias_map() -> dict[str, tuple[str, ...]]:
-    """lowercased term -> every equivalent spelling (including itself)."""
+    """lowercased term -> the extra spellings it expands to.
+
+    Full state name -> the COMMA-ANCHORED abbreviation (", CA"): boards write
+    "City, ST", and the anchor keeps codes that are English words (OR, IN, ME,
+    OK, HI) from matching prose like "Remote in USA or Canada" — matching is
+    case-insensitive. Abbreviation -> the full name, plain (full names are
+    unambiguous words).
+    """
     groups: dict[str, set[str]] = {}
     for name, abbr in US_STATES.items():
-        for term in (name, abbr):
-            groups.setdefault(term.lower(), set()).update((name, abbr))
+        groups.setdefault(name.lower(), set()).add(f", {abbr}")
+        groups.setdefault(abbr.lower(), set()).add(name)
     for group in _ALIAS_GROUPS:
         for term in group:
-            groups.setdefault(term.lower(), set()).update(group)
+            groups.setdefault(term.lower(), set()).update(set(group) - {term})
     return {key: tuple(sorted(values)) for key, values in groups.items()}
 
 
@@ -163,6 +201,25 @@ def expand_location_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
                 out.append(candidate)
     return tuple(out)
 ```
+
+In `src/interninbox/filters.py`, replace `_location_contains` — the current unconditional `(?<!\w)` lookbehind can never match a term that STARTS with punctuation (before the "," of ", CA" sits the word character "o" of "Francisco"), so lookarounds become conditional on the term's edges:
+
+```python
+def _location_contains(location: str, want: str) -> bool:
+    """Whole-word location match; lookarounds only at word-character edges.
+
+    A term that starts or ends in punctuation anchors itself: ", CA" (an
+    alias expansion) must match "San Francisco, CA" even though a word
+    character precedes the comma, and "D.C." keeps matching as before.
+    """
+    if not want:
+        return False
+    prefix = r"(?<!\w)" if (want[0].isalnum() or want[0] == "_") else ""
+    suffix = r"(?!\w)" if (want[-1].isalnum() or want[-1] == "_") else ""
+    return re.search(f"{prefix}{re.escape(want)}{suffix}", location, re.IGNORECASE) is not None
+```
+
+(All existing `tests/test_filters.py` location tests must still pass unchanged — "NY" keeps both lookarounds, "D.C." keeps its leading one.)
 
 In `src/interninbox/cli.py`: add imports `import dataclasses` (stdlib group) and `from interninbox.locations import expand_location_terms`. Add above `_cmd_scan`:
 
@@ -188,9 +245,9 @@ with:
     matched = [listing for listing in result.listings if matches(listing, filters)]
 ```
 
-- [ ] **Step 4: Verify GREEN** — full `pytest -q` (163 expected) + `ruff check .`.
+- [ ] **Step 4: Verify GREEN** — full `pytest -q` (all pass, no count regressions) + `ruff check .`.
 
-- [ ] **Step 5: Commit** — `git add src/interninbox/locations.py src/interninbox/cli.py tests/test_locations.py tests/test_cli.py`; message:
+- [ ] **Step 5: Commit** — `git add src/interninbox/locations.py src/interninbox/filters.py src/interninbox/cli.py tests/test_locations.py tests/test_cli.py`; message:
 
 ```
 feat: location aliases — US states, DC, and common forms
@@ -662,6 +719,27 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_G, "sofi", "SoFi", "large", ("fintech",)),
     RegistryCompany(_G, "nianticlabs", "Niantic", "large", ("gaming",)),
     RegistryCompany(_G, "carta", "Carta", "large", ("fintech",)),
+    RegistryCompany(_G, "coursera", "Coursera", "large", ("edtech",)),
+    RegistryCompany(_G, "confluent", "Confluent", "large", ("data",)),
+    RegistryCompany(_G, "digitalocean", "DigitalOcean", "large", ("infra",)),
+    RegistryCompany(_G, "docusign", "DocuSign", "large", ("productivity",)),
+    RegistryCompany(_G, "fastly", "Fastly", "large", ("infra",)),
+    RegistryCompany(_G, "cockroachlabs", "Cockroach Labs", "large", ("data",)),
+    RegistryCompany(_G, "rubrik", "Rubrik", "large", ("security",)),
+    RegistryCompany(_G, "zscaler", "Zscaler", "large", ("security",)),
+    RegistryCompany(_G, "smartsheet", "Smartsheet", "large", ("productivity",)),
+    RegistryCompany(_G, "unity3d", "Unity", "large", ("gaming",)),
+    RegistryCompany(_G, "roku", "Roku", "large", ("consumer",)),
+    RegistryCompany(_G, "hubspot", "HubSpot", "large", ("marketing",)),
+    RegistryCompany(_G, "toast", "Toast", "large", ("fintech",)),
+    RegistryCompany(_G, "nerdwallet", "NerdWallet", "large", ("fintech",)),
+    RegistryCompany(_G, "upwork", "Upwork", "large", ("marketplace",)),
+    RegistryCompany(_G, "udemy", "Udemy", "large", ("edtech",)),
+    RegistryCompany(_G, "yelp", "Yelp", "large", ("consumer",)),
+    RegistryCompany(_G, "block", "Block", "large", ("fintech",)),
+    RegistryCompany(_G, "procoretech", "Procore", "large", ("construction",)),
+    RegistryCompany(_G, "wayfair", "Wayfair", "large", ("ecommerce",)),
+    RegistryCompany(_G, "tripadvisor", "Tripadvisor", "large", ("travel",)),
     # ---- greenhouse, startup ----
     RegistryCompany(_G, "vercel", "Vercel", "startup", ("devtools",), top=True),
     RegistryCompany(_G, "brex", "Brex", "startup", ("fintech",), top=True),
@@ -682,7 +760,6 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_G, "gongio", "Gong", "startup", ("sales",)),
     RegistryCompany(_G, "postman", "Postman", "startup", ("devtools",)),
     RegistryCompany(_G, "circleci", "CircleCI", "startup", ("devtools",)),
-    RegistryCompany(_G, "coursera", "Coursera", "large", ("edtech",)),
     # ---- lever ----
     RegistryCompany(_L, "plaid", "Plaid", "large", ("fintech",), top=True),
     RegistryCompany(_L, "palantir", "Palantir", "large", ("data",), top=True),
@@ -696,6 +773,10 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_L, "mistral", "Mistral AI", "startup", ("ai",), top=True),
     RegistryCompany(_L, "octopusenergy", "Octopus Energy", "large", ("energy",)),
     RegistryCompany(_L, "welocalize", "Welocalize", "large", ("services",)),
+    RegistryCompany(_L, "anduril", "Anduril", "large", ("defense",), top=True),
+    RegistryCompany(_L, "outreach", "Outreach", "startup", ("sales",)),
+    RegistryCompany(_L, "highspot", "Highspot", "startup", ("sales",)),
+    RegistryCompany(_L, "veeva", "Veeva", "large", ("health",)),
     # ---- ashby, top startups & scale-ups ----
     RegistryCompany(_A, "openai", "OpenAI", "large", ("ai",), top=True),
     RegistryCompany(_A, "linear", "Linear", "startup", ("devtools",), top=True),
@@ -727,10 +808,22 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_A, "clay", "Clay", "startup", ("sales",)),
     RegistryCompany(_A, "wispr", "Wispr", "startup", ("ai",)),
     RegistryCompany(_A, "kikoff", "Kikoff", "startup", ("fintech",)),
+    RegistryCompany(_A, "cognition", "Cognition", "startup", ("ai",), top=True),
+    RegistryCompany(_A, "suno", "Suno", "startup", ("ai",)),
+    RegistryCompany(_A, "baseten", "Baseten", "startup", ("ai", "infra")),
+    RegistryCompany(_A, "railway", "Railway", "startup", ("devtools",)),
+    RegistryCompany(_A, "groq", "Groq", "startup", ("ai", "hardware")),
+    RegistryCompany(_A, "decagon", "Decagon", "startup", ("ai",)),
 )
 ```
 
-*(The executor extends this list with further verified candidates during step 4 of the authoring procedure until the ≥100 / balanced-tier data tests pass. Do NOT pad with invented slugs — every added entry must PASS the verifier first.)*
+*(~132 candidates ship in this plan — deliberately more than the ≥100 test floor so verification pruning has headroom. Do NOT pad with invented slugs — every added entry must PASS the verifier first.)*
+
+**Authoring notes (read before running the verifier):**
+- The verifier takes ~90 s per full run (0.6 s politeness sleep × ~132 entries); expect 2–3 runs while pruning.
+- After pruning, re-check the `top` balance: the data test requires 40–60 `top=True` entries — if pruning dropped below 40, promote well-known surviving entries; if you add candidates, don't exceed 60.
+- If the pool falls under 100 verified: find real slugs, don't guess them. Method: a company's careers page URL reveals both ATS and slug (`job-boards.greenhouse.io/<slug>`, `jobs.lever.co/<slug>`, `jobs.ashbyhq.com/<slug>`); for a candidate company, open its careers/jobs page (or `curl -sIL https://<company>.com/careers` and follow the board redirect), extract the slug, add the entry, and re-run the verifier. Slugs are frequently-but-not-always the lowercase company name — never commit an unverified guess.
+- Keep the `large`/`startup` judgment simple and defensible: public company or >1000 employees → `large`; otherwise `startup`. Borderline cases go by common perception; the tag exists for user filtering, not census accuracy.
 
 5. Rewrite `src/interninbox/companies.py` to render from the registry (public `render()` unchanged for the CLI):
 
@@ -851,7 +944,7 @@ def test_large_scan_prints_scale_note(
 
 ```python
     registry = data.get("registry", "none")
-    if not isinstance(registry, str) or registry not in ("none", *_REGISTRY_TIERS()):
+    if not isinstance(registry, str) or registry not in ("none", *_registry_tiers()):
         raise ConfigError(
             'registry must be one of "none", "top", "all", "large", "startups"'
         )
@@ -860,7 +953,7 @@ def test_large_scan_prints_scale_note(
 with the helper (module level, lazy import to keep config free of a hard registry dependency at import time):
 
 ```python
-def _REGISTRY_TIERS() -> tuple[str, ...]:
+def _registry_tiers() -> tuple[str, ...]:
     from interninbox.registry import TIERS
 
     return TIERS
@@ -1011,11 +1104,21 @@ def test_render_config_is_loadable(tmp_path) -> None:
     assert config.filters.roles == ("cybersecurity",)
 
 
-def test_wizard_filters_flow_through_expansion() -> None:
-    # The answers become a Filters the normal effective-filters layer expands.
+def test_wizard_answers_flow_through_effective_filters() -> None:
+    # Wizard answers ride the SAME expansion path as a file config: aliases
+    # expand and role presets merge into match_keywords.
+    from interninbox.cli import _effective_filters
+    from interninbox.config import Config
+
     answers = wizard.WizardAnswers(locations=("CA",), roles=("software",), tier="top")
-    filters = Filters(locations=answers.locations, roles=answers.roles)
-    assert filters.locations == ("CA",)
+    config = Config(
+        companies=(),
+        filters=Filters(locations=answers.locations, roles=answers.roles),
+        registry=answers.tier,
+    )
+    filters = _effective_filters(config)
+    assert "California" in filters.locations  # alias expansion applied
+    assert "software" in filters.match_keywords  # role preset merged
 ```
 
 Append to `tests/test_cli.py`:
@@ -1205,7 +1308,7 @@ Wait — `render_config` with `tier="none"` and no companies would fail `load_co
 3. In `_cmd_scan`, replace `config = load_config(args.config)` with:
 
 ```python
-    wizard_wants = getattr(args, "interactive", False) or (
+    wizard_wants = args.interactive or (
         not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
     )
     answers = None
@@ -1217,22 +1320,23 @@ Wait — `render_config` with `tier="none"` and no companies would fail `load_co
             print_fn=lambda line: print(line, file=sys.stderr),
             config_companies=len(existing.companies) if existing else 0,
         )
-        if answers.tier == "config" and existing is not None:
-            config = dataclasses.replace(
-                existing,
-                filters=dataclasses.replace(
-                    existing.filters, locations=answers.locations, roles=answers.roles
-                ),
-            )
-        else:
-            config = Config(
-                companies=existing.companies if existing else (),
-                filters=Filters(locations=answers.locations, roles=answers.roles),
-                registry=answers.tier if answers.tier != "config" else "none",
-            )
+        # Rebase on the existing config (or an empty one) so an --interactive
+        # run only overrides what the wizard actually asked about: locations,
+        # roles, and the registry tier. Everything else the user configured —
+        # exclude_keywords, match_keywords, remote_ok, [usajobs] — survives.
+        base = existing if existing is not None else Config(companies=())
+        config = dataclasses.replace(
+            base,
+            filters=dataclasses.replace(
+                base.filters, locations=answers.locations, roles=answers.roles
+            ),
+            registry=base.registry if answers.tier == "config" else answers.tier,
+        )
     else:
         config = load_config(args.config)
 ```
+
+(Blank wizard answers mean "no preference" — the prompt says so — which is why they intentionally override an existing config's `locations`/`roles` for that run. This makes `scan --interactive` the one-shot override path for config users: "just cybersecurity in Texas today" without editing the file.)
 
 with `from interninbox import wizard` and `Config` in the config import block. After the scan output (just before the `attempted` check), add the save offer:
 
@@ -1259,7 +1363,7 @@ Note the state-path consequence: the wizard run uses `default_state_path(args.co
 **Files:**
 - Modify: `README.md`, `docs/KNOWN-ISSUES.md`
 
-- [ ] **Step 1: README.** (a) Quick-start: show the wizard as the new day-one path (`pip install interninbox` → `interninbox scan` → answer three questions), with the old `init`+edit flow kept as the "scripted setup" alternative. (b) Config reference table: add `registry` and `filters.roles` rows. (c) New short sections: "Role presets" (point at `interninbox roles`; whole-word semantics; roles merge with `match_keywords`), "The company registry" (curated + live-verified, sizes/tags, honest scan-time estimates, how to contribute an entry), and extend the locations section with the alias behavior ("California" ⇄ "CA", NYC, UK — unknown terms unchanged). (d) `--interactive` in the CLI flags table.
+- [ ] **Step 1: README.** (a) Quick-start: show the wizard as the new day-one path (`pip install interninbox` → `interninbox scan` → answer three questions), with the old `init`+edit flow kept as the "scripted setup" alternative. (b) Config reference table: add `registry` and `filters.roles` rows. (c) New short sections: "Role presets" (point at `interninbox roles`; whole-word semantics; roles merge with `match_keywords`), "The company registry" (curated + live-verified, sizes/tags, honest scan-time estimates, how to contribute an entry), and extend the locations section with the alias behavior ("California" ⇄ "CA", NYC, UK — unknown terms unchanged). (d) `--interactive` and the `roles` subcommand in the CLI tables, including the one-shot-override framing: for config users, `scan --interactive` answers apply to that run only (unless saved), overriding `locations`/`roles`/registry while preserving everything else in the config. (e) Note the alias-table safety rule where locations are documented: state names anchor their abbreviations (", OR"), so "Oregon" never matches the word "or"; and "LA" deliberately means Louisiana only — spell out "Los Angeles".
 
 - [ ] **Step 2: KNOWN-ISSUES.** M4: note the alias half is now largely addressed for US states/DC + common forms via the bundled alias table (arbitrary city aliases remain free-text reality). H3: note the wizard + registry close the "day-one disappointment" (no more editing TOML before first results; empty results already explain themselves). Keep both entries' history intact; adjust only the status notes.
 
