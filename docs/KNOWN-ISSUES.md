@@ -8,10 +8,13 @@ is surprised.
 
 > **Status 2026-08-11:** most issues below are now *Fixed* — the High/Medium
 > findings on the `known-issues-remediation` branch, then M4, L3, L6, L7 and the
-> remaining M8 hardening on `close-remaining-known-issues`. What stays open is
-> inherent, not a deferred bug: heuristic completeness (M5), per-source POSTED
-> semantics (L5), location aliasing (M4's alias half), and the lock-free
-> simultaneous-write window (M8's residual). Each is marked and explained inline.
+> remaining M8 hardening on `close-remaining-known-issues`, and the discovery
+> update (location aliases, role presets, curated registry, first-run wizard) on
+> `discovery-wizard`, which further closed M4's alias half and H3's day-one
+> disappointment. What stays open is inherent, not a deferred bug: heuristic
+> completeness (M5), per-source POSTED semantics (L5), arbitrary city aliasing
+> (M4's residual), and the lock-free simultaneous-write window (M8's residual).
+> Each is marked and explained inline.
 
 Severity key:
 
@@ -78,10 +81,15 @@ broadening behavior available.
 `src/interninbox/config.py` (starter config), `src/interninbox/companies.py`,
 `src/interninbox/cli.py` (scan output timing)
 
-**Fix (partial):** scans now show per-company progress and an empty result
-explains *why* nothing matched (filtered out, already seen, or empty boards)
-(Tasks 7, 8). Starter-list rot and off-season empties from the bundled
-companies remain open.
+**Fix:** the wizard + registry close the day-one disappointment. A first
+`interninbox scan` on a terminal now opens an interactive wizard (location,
+roles, companies) and scans immediately — no editing TOML before any results —
+and the bundled `registry` tiers let a new user sweep ~100 live-verified boards
+instead of the three starter slugs, so starter-list rot no longer decides the
+first run. Scans also show per-company progress and an empty result explains
+*why* nothing matched (filtered out, already seen, or empty boards) (Tasks 5, 3,
+7, 8). Off-season empties from any single board are inherent, but a wide
+registry sweep makes a barren day-one far less likely.
 
 Three things compound on a new user's first run:
 
@@ -162,9 +170,15 @@ slug is wrong. There is also no `Retry-After` handling on 429.
 **Fix:** location matching is now whole-word (`(?<!\w)term(?!\w)`,
 case-insensitive), so `locations = ["NY"]` no longer matches "Su**nny**vale"
 while ", NY" and "New York, NY" still match; a term ending in punctuation
-("D.C.") still anchors correctly. The **alias** half is inherent and stays
-open: location strings are per-ATS free text, so "New York" still will not
-match a board that writes "NYC" — list both forms. Documented in the README.
+("D.C.") still anchors correctly. The **alias** half is now largely addressed
+too: a bundled alias table (`src/interninbox/locations.py`) expands US
+states/DC and common country/city forms at scan time, so `"California"` ⇄
+`"CA"`, `"NYC"` ⇄ `"New York"`, and `"UK"` ⇄ `"United Kingdom"` all match now.
+State names expand to a comma-anchored code (`"Oregon"` → `", OR"`), so codes
+that are English words never false-positive on prose, and `"LA"` deliberately
+means Louisiana only. What remains inherent: arbitrary city aliases are per-ATS
+free text, so an uncommon local abbreviation the table doesn't know still needs
+both forms. Documented in the README.
 
 Bare `in` on lowercased strings. Verified: `locations = ["NY"]` matches
 "Su**nny**vale, CA". Conversely "New York" will not match a board that writes

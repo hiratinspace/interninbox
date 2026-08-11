@@ -41,6 +41,8 @@ optionally, the official **USAJOBS** API for federal Pathways internships.
 - [Configuration](#configuration)
 - [Finding a company's slug](#finding-a-companys-slug)
 - [How matching works](#how-matching-works)
+- [Role presets](#role-presets)
+- [The company registry](#the-company-registry)
 - [`--new-only` and the state file](#--new-only-and-the-state-file)
 - [USAJOBS (optional)](#usajobs-optional)
 - [How a scan works](#how-a-scan-works)
@@ -81,11 +83,25 @@ also works (`pipx install git+https://github.com/hiratinspace/interninbox`).
 
 ## Quickstart
 
-Sixty seconds, three commands:
+Install (above), then just run:
+
+```sh
+interninbox scan
+```
+
+On a fresh terminal with no config yet, `scan` opens a short **wizard**. It
+asks three questions — where you want to work, which role types, and which
+companies (your own list, or a tier of the bundled [registry](#the-company-registry)
+with a rough scan-time estimate) — then scans immediately and offers to save
+your answers to `interninbox.toml` for next time. Blank answers mean "no
+preference". The wizard only appears on a real terminal with no config; cron
+jobs and pipes are never interrupted (pass `--interactive` to force it).
+
+Prefer to set things up by hand? The scripted path still works:
 
 ```sh
 interninbox init          # 1. writes a starter interninbox.toml here
-interninbox companies     # 2. prints 34 well-known companies to copy from
+interninbox companies     # 2. prints the curated company registry to copy from
 interninbox scan          # 3. scans every configured company
 ```
 
@@ -100,7 +116,8 @@ last scan.
 | --- | --- |
 | `interninbox init` | Write a starter `interninbox.toml` into the current directory (refuses to overwrite) |
 | `interninbox scan` | Scan every configured company and print matching internships |
-| `interninbox companies` | Print a starter list of well-known companies as ready-to-paste `ats:slug` entries |
+| `interninbox companies` | Print the curated company [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
+| `interninbox roles` | Print the named [role presets](#role-presets) and the exact whole-word keywords each one expands to |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -112,6 +129,7 @@ last scan.
 | `--markdown` | Emit a Markdown table (paste it anywhere) |
 | `--new-only` | Show only listings not seen by a previous scan |
 | `--state PATH` | Use a state file other than `.interninbox-state.json` next to the config |
+| `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them — a one-shot override of `locations`, `roles`, and `registry` that leaves everything else in your config untouched |
 
 Exit codes: `0` on success (including partial failures: a company that fails
 prints a one-line warning and never aborts your scan), `1` when the config is
@@ -129,11 +147,19 @@ companies = [
     "ashby:linear",        # jobs.ashbyhq.com/<slug>
 ]
 
+# Also sweep the bundled curated registry: "none" (default), "top" (~50
+# well-known boards), "all", "large", or "startups". Unioned with `companies`.
+registry = "none"
+
 [filters]
 # Extra title keywords that count as an internship signal, in addition to
 # the built-in one (intern, internship, co-op, summer analyst, apprentice,
 # student trainee, ...).
 include_keywords = []
+
+# Named role presets that narrow to a field — `interninbox roles` lists them.
+# Their keywords merge into match_keywords. Example: roles = ["cybersecurity"].
+roles = []
 
 # Drop any listing whose title contains one of these (case-insensitive).
 exclude_keywords = ["mechanical"]
@@ -157,9 +183,11 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `companies` | list of `"ats:slug"` | (required) | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
+| `companies` | list of `"ats:slug"` | (required unless `registry`/`[usajobs]` is set) | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
+| `registry` | `"none"`, `"top"`, `"all"`, `"large"`, or `"startups"` | `"none"` | Also scan the bundled curated [registry](#the-company-registry): `top` is ~50 well-known boards; `all`/`large`/`startups` the full set or a size slice. Unioned with `companies` (duplicates removed) |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal |
 | `filters.match_keywords` | list of strings | `[]` | Whole-word title keywords required on top of the internship signal (narrows; `include_keywords` broadens) |
+| `filters.roles` | list of strings | `[]` | Named [role presets](#role-presets) (`interninbox roles`) whose whole-word keywords merge into `match_keywords` — narrows to a field, e.g. `["cybersecurity"]` |
 | `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
 | `filters.locations` | list of strings | `[]` | Whole-word location terms to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
@@ -183,8 +211,8 @@ Open the company's careers page and look at the URL of an actual job listing:
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
 
 If a scan reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or the
-company moved ATS providers. `interninbox companies` gives you 34 known-good
-entries to start from.
+company moved ATS providers. `interninbox companies` gives you the full curated
+[registry](#the-company-registry) of known-good entries to start from.
 
 ## How matching works
 
@@ -208,9 +236,78 @@ is nothing to match against. Leave `locations = []` to keep such listings
 (boards often omit location metadata).
 
 Location matching is **whole-word**, case-insensitive: `"NY"` matches
-"Albany, **NY**" but not "Su**nny**vale, CA". It does not know aliases, so
-"New York" will not catch a board that writes "NYC" — list both forms when a
-place has a common abbreviation: `locations = ["New York", "NYC"]`.
+"Albany, **NY**" but not "Su**nny**vale, CA".
+
+**Location aliases.** Common US-state and country/city forms are expanded for
+you at scan time, so `"California"` also matches a board that writes `"CA"` (and
+vice versa), and `"NYC"` ⇄ `"New York"`, `"UK"` ⇄ `"United Kingdom"`,
+`"US"`/`"USA"` ⇄ `"United States"`. Unknown terms pass through unchanged, and
+your config keeps the raw term you typed. Two safety rules worth knowing:
+
+- A full state name expands to its **comma-anchored** abbreviation (`"Oregon"` →
+  `", OR"`), never the bare code — so `"Oregon"` matches "Portland, OR" but
+  never the English word *or* in "Remote in USA **or** Canada". The same anchor
+  protects `IN`, `ME`, `OK`, and `HI`.
+- `"LA"` deliberately means **Louisiana only**. For Los Angeles, spell it out:
+  `locations = ["Los Angeles"]`.
+
+Arbitrary city aliases the table doesn't know are still per-ATS free text, so
+list both forms if a place has a local abbreviation not covered above.
+
+## Role presets
+
+Instead of hand-listing keywords, narrow to a whole field with a named preset:
+
+```toml
+[filters]
+roles = ["cybersecurity"]   # keeps only security internships
+```
+
+Run `interninbox roles` to see every preset and the exact whole-word keywords
+it expands to — `software`, `data`, `cybersecurity`, `finance`, `business`,
+`marketing`, `design`, `product`, and `hardware`. A role's keywords are
+**merged into** `match_keywords` (both express "titles I want to see", OR-ed
+together), so `roles = ["software"]` keeps internships whose title contains
+"software", "backend", "platform", and friends, as whole words. Nothing is
+magic: the command prints the keywords so you can see exactly what each preset
+does, and an unknown role name fails with the list of valid ones.
+
+## The company registry
+
+interninbox bundles a curated registry of ~100 internship-hiring companies
+across Greenhouse, Lever, and Ashby — a mix of large public companies and
+startups, each tagged by industry. Every slug was **live-verified** against its
+public board API when the registry was authored
+([`scripts/verify_registry.py`](scripts/verify_registry.py)); companies do
+migrate ATSes, so a slug that later goes stale degrades gracefully (one warning
+line) instead of crashing a scan.
+
+Sweep the registry without listing companies by hand with the `registry` key:
+
+```toml
+registry = "top"   # ~50 of the most-recognized boards
+```
+
+| Tier | What it scans |
+| --- | --- |
+| `"top"` | ~50 of the most-recognized companies |
+| `"all"` | the whole registry |
+| `"large"` | only the large / public companies |
+| `"startups"` | only the startups |
+
+The tier is **unioned** with any `companies` you list (duplicates removed), so
+you can keep your own boards and add a tier on top. Big sweeps are slow *on
+purpose* — polite pacing floors same-host requests at 500 ms — so a scan of 20
+or more boards prints an honest time estimate up front (e.g. `scanning 103
+boards — roughly ~2 min`).
+
+`interninbox companies` prints the full registry as ready-to-paste `ats:slug`
+entries with each company's size and tags. **Contributing an entry:** add a
+`RegistryCompany(ats, slug, name, size, tags)` row to
+`src/interninbox/registry.py`, then run
+`.venv/bin/python scripts/verify_registry.py` — it must report `PASS` (a live
+HTTP 200 from the board) before the entry ships. Never commit an unverified
+slug.
 
 ## `--new-only` and the state file
 
