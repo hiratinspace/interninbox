@@ -8,6 +8,7 @@ Field notes:
   - `jobUrl` is the public posting page (`applyUrl` also exists);
   - `location` is a single free-text string; `workplaceType` is one of
     "Remote"/"Hybrid"/"OnSite";
+  - `secondaryLocations[].location` lists additional offices.
   - `publishedAt` is an ISO-8601 timestamp.
 """
 
@@ -41,14 +42,21 @@ def parse(payload: object, slug: str) -> list[Listing]:
 
 
 def _parse_job(job: dict[str, object], slug: str) -> Listing:
-    locations: tuple[str, ...] = ()
+    locations: list[str] = []
     location = job.get("location")
     if location:
-        locations = (str(location),)
+        locations.append(str(location))
+    secondary = job.get("secondaryLocations")
+    if isinstance(secondary, list):
+        for entry in secondary:
+            if isinstance(entry, dict) and entry.get("location"):
+                name = str(entry["location"])
+                if name not in locations:
+                    locations.append(name)
     workplace_type = job.get("workplaceType")
     if isinstance(workplace_type, str) and workplace_type.lower() == "remote":
         if not any("remote" in entry.lower() for entry in locations):
-            locations = (*locations, "Remote")
+            locations.append("Remote")
 
     posted_at: dt.datetime | None = None
     published_at = job.get("publishedAt")
@@ -64,6 +72,6 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
         listing_id=str(job["id"]),
         title=str(job["title"]),
         url=str(job["jobUrl"]),
-        locations=locations,
+        locations=tuple(locations),
         posted_at=posted_at,
     )

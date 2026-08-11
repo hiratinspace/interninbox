@@ -2,9 +2,9 @@
 
 Endpoint: https://data.usajobs.gov/api/search — the official federal API.
 Unlike the ATS adapters this one requires a (free) API key, and its
-documented authentication contract is three headers: `Host`, `User-Agent`
-set to the email address the key was registered under, and
-`Authorization-Key`. That is why this adapter does NOT send this tool's
+documented authentication contract is two headers plus the URL-derived
+Host: `User-Agent` set to the email address the key was registered under,
+and `Authorization-Key`. That is why this adapter does NOT send this tool's
 normal User-Agent: the vendor's own contract for this API is that the UA
 *is* the registered email.
 
@@ -25,13 +25,13 @@ Field notes (from the published response schema):
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 
 from interninbox.config import UsaJobsConfig
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
 
 SEARCH_URL = "https://data.usajobs.gov/api/search"
-SEARCH_HOST = "data.usajobs.gov"
 
 RESULTS_PER_PAGE = 500
 MAX_PAGES = 5  # conservative cap; 2500 announcements is far beyond any intern search
@@ -41,42 +41,66 @@ COMPANY_LABEL = "usajobs"
 
 
 def _headers(api_key: str, email: str) -> dict[str, str]:
-    # The three documented auth headers, exactly — see module docstring.
+    # The documented auth contract: the User-Agent IS the registered email.
+    # Host is NOT set by hand — httpx derives it from the URL, so a redirect
+    # can never carry a stale data.usajobs.gov Host header elsewhere.
     return {
-        "Host": SEARCH_HOST,
         "User-Agent": email,
         "Authorization-Key": api_key,
     }
 
 
-def fetch(fetcher: Fetcher, cfg: UsaJobsConfig, api_key: str) -> list[Listing]:
+def fetch(
+    fetcher: Fetcher,
+    cfg: UsaJobsConfig,
+    api_key: str,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Listing]:
     headers = _headers(api_key, cfg.email)
-    params: dict[str, str] = {
+    base_params: dict[str, str] = {
         "HiringPath": "student",
         "ResultsPerPage": str(RESULTS_PER_PAGE),
     }
-    if cfg.keywords:
-        params["Keyword"] = " ".join(cfg.keywords)
+    # One query per keyword: USAJOBS ANDs the words inside a single Keyword
+    # param, but a configured keyword list means OR. No keywords = one
+    # unrestricted query. Results are deduped on the control number.
+    queries: list[dict[str, str]] = (
+        [{**base_params, "Keyword": keyword} for keyword in cfg.keywords]
+        if cfg.keywords
+        else [base_params]
+    )
 
     listings: list[Listing] = []
     seen_ids: set[str] = set()
-    fetched = 0
-    for page_number in range(1, MAX_PAGES + 1):
-        payload = fetcher.get_json(
-            SEARCH_URL, params={**params, "Page": str(page_number)}, headers=headers
-        )
-        items, count_all = _page_items(payload)
-        if not items:
-            break
-        for item in items:
-            listing = parse_item(item)
-            if listing.listing_id in seen_ids:
-                continue
-            seen_ids.add(listing.listing_id)
-            listings.append(listing)
-        fetched += len(items)
-        if count_all is not None and fetched >= count_all:
-            break
+    for params in queries:
+        fetched = 0
+        count_all: int | None = None
+        for page_number in range(1, MAX_PAGES + 1):
+            payload = fetcher.get_json(
+                SEARCH_URL,
+                params={**params, "Page": str(page_number)},
+                headers=headers,
+                follow_redirects=False,
+            )
+            items, count_all = _page_items(payload)
+            if not items:
+                break
+            for item in items:
+                listing = parse_item(item)
+                if listing.listing_id in seen_ids:
+                    continue
+                seen_ids.add(listing.listing_id)
+                listings.append(listing)
+            fetched += len(items)
+            if count_all is not None and fetched >= count_all:
+                break
+        if count_all is not None and fetched < count_all:
+            keyword = params.get("Keyword", "")
+            scope = f" for keyword {keyword!r}" if keyword else ""
+            warn(
+                f"usajobs: results truncated{scope} — fetched {fetched} of {count_all}; "
+                "add or narrow keywords to see everything"
+            )
     return listings
 
 

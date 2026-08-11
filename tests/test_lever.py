@@ -16,7 +16,7 @@ def test_parse_full_board() -> None:
     assert first.source == "lever"
     assert first.title == "Cartography Engineering Intern"
     assert first.url == "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0001"
-    assert first.locations == ("San Francisco, CA",)
+    assert first.locations == ("San Francisco, CA", "New York, NY")
 
 
 def test_parse_epoch_milliseconds_created_at() -> None:
@@ -54,3 +54,18 @@ def test_fetch_hits_documented_endpoint(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         assert lever.fetch(fetcher, "cobalt-cartography") == []
     assert seen == ["https://api.lever.co/v0/postings/cobalt-cartography?mode=json"]
+
+
+def test_parse_all_locations_preferred_over_single() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    assert listings[0].locations == ("San Francisco, CA", "New York, NY")
+
+
+def test_boolean_created_at_is_not_a_date() -> None:
+    posting = {
+        "id": "x1",
+        "text": "QA Intern",
+        "hostedUrl": "https://jobs.example-lever.test/x/x1",
+        "createdAt": True,  # bool is an int subclass; must not become 1970-01-01
+    }
+    assert lever.parse([posting], "x")[0].posted_at is None

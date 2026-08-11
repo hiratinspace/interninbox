@@ -24,7 +24,7 @@ def test_parse_full_board() -> None:
 def test_parse_remote_workplace_type_adds_remote_location() -> None:
     listings = ashby.parse(load_fixture("ashby/harborline.json"), "harborline")
     remote = listings[1]
-    assert remote.locations == ("North America", "Remote")
+    assert remote.locations == ("North America", "Europe", "Remote")
 
 
 def test_parse_missing_jobs_raises() -> None:
@@ -47,3 +47,10 @@ def test_fetch_hits_documented_endpoint(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         assert ashby.fetch(fetcher, "harborline") == []
     assert seen == ["https://api.ashbyhq.com/posting-api/job-board/harborline"]
+
+
+def test_parse_secondary_locations_included_and_deduped() -> None:
+    listings = ashby.parse(load_fixture("ashby/harborline.json"), "harborline")
+    # Primary "North America" + secondary "Europe"; the duplicate secondary
+    # "North America" is dropped; "Remote" still appended from workplaceType.
+    assert listings[1].locations == ("North America", "Europe", "Remote")

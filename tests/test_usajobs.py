@@ -27,7 +27,7 @@ def test_fetch_sends_documented_auth_headers(instant_fetcher) -> None:
     with instant_fetcher(make_transport(_paginated_handler(requests_seen))) as fetcher:
         usajobs.fetch(fetcher, CFG, "fixture-api-key")
     first = requests_seen[0]
-    # The three documented headers: Host, User-Agent = registered email, key.
+    # User-Agent = registered email, plus the key; Host comes from the URL.
     assert first.headers["User-Agent"] == "fixture@example.test"
     assert first.headers["Authorization-Key"] == "fixture-api-key"
     assert first.url.host == "data.usajobs.gov"
@@ -94,3 +94,50 @@ def test_fetch_stops_on_empty_page(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         assert usajobs.fetch(fetcher, CFG, "fixture-api-key") == []
     assert len(requests_seen) == 1
+
+
+def test_no_hardcoded_host_header() -> None:
+    # httpx derives Host from the URL; hardcoding it would follow a redirect
+    # to a different host while still claiming to be data.usajobs.gov.
+    assert "Host" not in usajobs._headers("key", "fixture@example.test")
+
+
+def test_redirects_are_not_followed(instant_fetcher) -> None:
+    def redirecting(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"Location": "https://elsewhere.test/x"})
+
+    with instant_fetcher(make_transport(redirecting)) as fetcher:
+        with pytest.raises(AdapterError, match="unexpected redirect"):
+            usajobs.fetch(fetcher, CFG, "fixture-api-key")
+
+
+def test_two_keywords_are_queried_separately_or_semantics(instant_fetcher) -> None:
+    # USAJOBS ANDs words inside one Keyword param; a keyword LIST means OR,
+    # so each keyword gets its own query (deduped on control number).
+    requests_seen: list[httpx.Request] = []
+    cfg = UsaJobsConfig(enabled=True, keywords=("software", "data"), email="fixture@example.test")
+    with instant_fetcher(make_transport(_paginated_handler(requests_seen))) as fetcher:
+        usajobs.fetch(fetcher, cfg, "fixture-api-key")
+    keywords = {request.url.params["Keyword"] for request in requests_seen}
+    assert keywords == {"software", "data"}
+
+
+def test_truncation_at_page_cap_warns(instant_fetcher) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params["Page"]
+        item = {
+            "MatchedObjectId": f"9000{page}",
+            "MatchedObjectDescriptor": {
+                "PositionTitle": "Student Trainee (Synthetic)",
+                "PositionURI": f"https://example.test/ViewDetails/9000{page}",
+                "OrganizationName": "Bureau of Fictional Statistics",
+            },
+        }
+        return json_response(
+            {"SearchResult": {"SearchResultCountAll": 10000, "SearchResultItems": [item]}}
+        )
+
+    warnings: list[str] = []
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        usajobs.fetch(fetcher, CFG, "fixture-api-key", warn=warnings.append)
+    assert warnings and "truncated" in warnings[0]

@@ -8,6 +8,8 @@ Field notes:
   - `hostedUrl` is the public posting page (preferred over `applyUrl` for
     display);
   - `categories.location` is a single string;
+  - `categories.allLocations` (when present) supersedes the single
+    `categories.location`.
   - `createdAt` is epoch *milliseconds*.
 """
 
@@ -41,18 +43,24 @@ def parse(payload: object, slug: str) -> list[Listing]:
 
 
 def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
-    locations: tuple[str, ...] = ()
+    locations: list[str] = []
     categories = posting.get("categories")
-    if isinstance(categories, dict) and categories.get("location"):
-        locations = (str(categories["location"]),)
+    if isinstance(categories, dict):
+        raw_all = categories.get("allLocations")
+        if isinstance(raw_all, list):
+            for entry in raw_all:
+                if isinstance(entry, str) and entry and entry not in locations:
+                    locations.append(entry)
+        if not locations and categories.get("location"):
+            locations.append(str(categories["location"]))
     workplace_type = posting.get("workplaceType")
     if isinstance(workplace_type, str) and workplace_type.lower() == "remote":
         if not any("remote" in location.lower() for location in locations):
-            locations = (*locations, "Remote")
+            locations.append("Remote")
 
     posted_at: dt.datetime | None = None
     created_at = posting.get("createdAt")
-    if isinstance(created_at, int | float):
+    if isinstance(created_at, int | float) and not isinstance(created_at, bool):
         posted_at = dt.datetime.fromtimestamp(created_at / 1000, tz=dt.UTC)
 
     return Listing(
@@ -61,6 +69,6 @@ def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
         listing_id=str(posting["id"]),
         title=str(posting["text"]),
         url=str(posting["hostedUrl"]),
-        locations=locations,
+        locations=tuple(locations),
         posted_at=posted_at,
     )

@@ -159,6 +159,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 | --- | --- | --- | --- |
 | `companies` | list of `"ats:slug"` | (required) | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal |
+| `filters.match_keywords` | list of strings | `[]` | Whole-word title keywords required on top of the internship signal (narrows; `include_keywords` broadens) |
 | `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
 | `filters.locations` | list of strings | `[]` | Location substrings to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
@@ -194,13 +195,22 @@ All matching is local, deterministic heuristics. Fast, free, and predictable:
    and friends, OR any of your `include_keywords`. Word boundaries matter:
    *"International Program Manager"* and *"Internal Tools Engineer"* do **not**
    match.
-2. **Staff-role exclusion**: roles *about* interns rather than *for* them
+2. **`match_keywords` requirement**: if you set `match_keywords`, the title
+   must also contain at least one of them as a whole word. This *narrows*
+   ("internship AND security"); `include_keywords` above *broadens*.
+3. **Staff-role exclusion**: roles *about* interns rather than *for* them
    (recruiter, program manager, university relations) and unambiguous
    seniority markers (Senior, Staff, II/III) are dropped.
-3. **Your filters**: `exclude_keywords`, then `locations`/`remote_ok`.
+4. **Your filters**: `exclude_keywords`, then `locations`/`remote_ok`.
 
-A listing with no stated location passes the locations filter (boards often
-omit location metadata; dropping those silently would hide real internships).
+A listing with no stated location is **dropped** when `locations` is set — there
+is nothing to match against. Leave `locations = []` to keep such listings
+(boards often omit location metadata).
+
+Location matching is plain substring matching: `"NY"` also matches
+"Su**nny**vale, CA", and "New York" will not catch a board that writes "NYC".
+Prefer full names and list both forms when a city has a common abbreviation:
+`locations = ["New York", "NYC"]`.
 
 ## `--new-only` and the state file
 
@@ -208,13 +218,20 @@ Every scan records what it saw in a small state file
 (`.interninbox-state.json`, next to your config; override with `--state`).
 With `--new-only`, only listings absent from that file are shown, so "new"
 always means **"since my last scan"**, whether or not earlier scans used the
-flag.
+flag. A listing counts as *seen* once it has been fetched, even if your filters
+hid it, so loosening a filter later will not flood `--new-only` with old posts.
 
 - First scan: everything is new.
 - Missing or corrupt state file: everything counts as new: one warning,
   never a crash.
-- The state file is per-config-location and gitignored by `init`'s
-  convention; delete it any time to reset.
+- The state file is per-config-location; delete it any time to reset. `init`
+  writes only the TOML — if your config lives in a git repository, add
+  `.interninbox-state.json` to your `.gitignore` yourself.
+- Two different configs in the same directory share the default state file —
+  pass `--state` to keep them separate.
+- The POSTED column means slightly different things per source: Greenhouse
+  first-published, Lever created, Ashby last-published (a repost looks new),
+  USAJOBS announcement-open date.
 
 Run it on a schedule (cron, launchd, a shell alias you hit with your morning
 coffee) and `--new-only` becomes a personal internship feed.
@@ -273,6 +290,11 @@ politely and fast. What it deliberately does *not* do:
 - deduplicate reposts across boards,
 - watch continuously or alert you the moment something appears,
 - apply on your behalf.
+
+Title-only matching still misses some real internships: bare "Trainee", titles
+like "Software Engineer (Intern) II" (the seniority-level filter wins), and
+languages beyond the built-in German/French patterns. `include_keywords` can
+widen the net.
 
 Continuous verification, curation, and instant alerts are what the hosted
 Interninbox product (coming soon) does. This CLI is the honest local version:

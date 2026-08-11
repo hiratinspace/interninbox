@@ -18,6 +18,10 @@
       "applyUrl": "https://jobs.example-ashby.test/harborline/2c3d4e5f/application",
       "location": "North America",
       "workplaceType": "Remote",
+      "secondaryLocations": [
+        { "location": "Europe" },
+        { "location": "North America" }
+      ],
       "publishedAt": "2026-07-30T12:00:00+00:00",
       "descriptionHtml": "<p>Fictional synthetic fixture text.</p>"
     },

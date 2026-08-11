@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import unicodedata
 
 from interninbox.models import Listing, ScanResult
 
@@ -27,19 +28,29 @@ def _posted_utc(listing: Listing) -> dt.datetime:
     return posted
 
 
+def _clean(text: str) -> str:
+    """Drop control/format characters from untrusted board text.
+
+    Board JSON is arbitrary third-party data; ANSI/OSC escapes, C0/C1
+    controls, bidi overrides, and zero-width characters (categories Cc/Cf)
+    must never reach the terminal or a pasted markdown table.
+    """
+    return "".join(ch for ch in text if unicodedata.category(ch) not in ("Cc", "Cf"))
+
+
 def _truncate(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
 def _row(listing: Listing) -> tuple[str, str, str, str, str]:
-    locations = ", ".join(listing.locations) or "-"
+    locations = ", ".join(_clean(entry) for entry in listing.locations) or "-"
     posted = listing.posted_at.date().isoformat() if listing.posted_at else "-"
     return (
-        listing.company,
-        _truncate(listing.title, _MAX_TITLE_WIDTH),
+        _clean(listing.company),
+        _truncate(_clean(listing.title), _MAX_TITLE_WIDTH),
         _truncate(locations, _MAX_LOCATIONS_WIDTH),
         posted,
-        listing.url,
+        _clean(listing.url),
     )
 
 
@@ -56,7 +67,21 @@ def summary_line(result: ScanResult) -> str:
 def format_table(result: ScanResult) -> str:
     listings = sort_listings(result.listings)
     if not listings:
-        return "No matching internships found.\n" + summary_line(result)
+        lines = ["No matching internships found."]
+        if result.listings_matched:
+            lines.append(
+                f"({result.listings_matched} matched but were already seen — "
+                "nothing new since the last scan)"
+            )
+        elif result.listings_checked:
+            lines.append(
+                f"({result.listings_checked} listings checked; none matched your filters "
+                "— internships may be off-season, or try loosening [filters])"
+            )
+        elif result.companies_scanned:
+            lines.append("(the boards responded but list no jobs at all right now)")
+        lines.append(summary_line(result))
+        return "\n".join(lines)
     header = ("COMPANY", "TITLE", "LOCATIONS", "POSTED", "URL")
     rows = [_row(listing) for listing in listings]
     widths = [max(len(row[i]) for row in [header, *rows]) for i in range(4)]
@@ -88,9 +113,23 @@ def format_json(result: ScanResult) -> str:
             "internships": len(listings),
             "companies_scanned": result.companies_scanned,
             "companies_failed": result.companies_failed,
+            "listings_checked": result.listings_checked,
         },
     }
     return json.dumps(payload, indent=2)
+
+
+def _md_escape(text: str) -> str:
+    return (
+        text.replace("\\", "\\\\")
+        .replace("|", "\\|")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+
+
+def _md_url(url: str) -> str:
+    return url.replace("(", "%28").replace(")", "%29")
 
 
 def format_markdown(result: ScanResult) -> str:
@@ -98,9 +137,10 @@ def format_markdown(result: ScanResult) -> str:
     lines = ["| Company | Title | Locations | Posted | Link |", "| --- | --- | --- | --- | --- |"]
     for listing in listings:
         company, title, locations, posted, url = _row(listing)
-        title = title.replace("|", "\\|")
-        locations = locations.replace("|", "\\|")
-        lines.append(f"| {company} | {title} | {locations} | {posted} | [apply]({url}) |")
+        lines.append(
+            f"| {_md_escape(company)} | {_md_escape(title)} | {_md_escape(locations)} "
+            f"| {posted} | [apply]({_md_url(url)}) |"
+        )
     lines.append("")
     lines.append(summary_line(result))
     return "\n".join(lines)

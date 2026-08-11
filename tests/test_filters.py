@@ -98,3 +98,53 @@ def test_remote_ok_false_drops_remote_only() -> None:
     assert not matches(make_listing(locations=("Remote",)), filters)
     # A listing with a physical location alongside remote survives.
     assert matches(make_listing(locations=("New York, NY", "Remote")), filters)
+
+
+def test_match_keywords_narrow_within_internships() -> None:
+    filters = Filters(match_keywords=("security",))
+    assert matches(make_listing(title="Security Engineering Intern"), filters)
+    assert not matches(make_listing(title="Software Engineering Intern"), filters)
+    # match_keywords never widens: a non-internship stays out.
+    assert not matches(make_listing(title="Security Engineer"), filters)
+
+
+def test_match_keywords_are_whole_word() -> None:
+    filters = Filters(match_keywords=("ai",))
+    assert not matches(make_listing(title="Chair of Maintenance Intern"), filters)
+    assert matches(make_listing(title="AI Research Intern"), filters)
+
+
+def test_match_keywords_list_is_any_of() -> None:
+    filters = Filters(match_keywords=("security", "data"))
+    assert matches(make_listing(title="Data Platform Intern"), filters)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Software Engineer - Summer 2027",
+        "Industrial Placement, Devices",
+        "Placement Student - Manufacturing",
+        "Engineering Fellowship",
+        "Praktikant Softwareentwicklung",
+        "Werkstudentin QA",
+        "Stagiaire ingénieur logiciel",
+    ],
+)
+def test_new_signal_patterns(title: str) -> None:
+    assert has_internship_signal(title)
+
+
+def test_pathways_recent_graduates_is_not_a_signal() -> None:
+    # "Pathways Recent Graduates" is a post-degree full-time federal program.
+    assert not has_internship_signal("Pathways Recent Graduates - Accounting")
+    assert has_internship_signal("Pathways Internship Program - IT")
+
+
+def test_sr_abbreviation_is_staff() -> None:
+    assert is_staff_role("Sr. Software Engineer")
+    assert is_staff_role("Sr Engineer, Platforms")
+
+
+def test_sre_is_not_a_staff_marker() -> None:
+    assert not is_staff_role("Site Reliability Intern (SRE)")

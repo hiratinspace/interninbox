@@ -9,6 +9,7 @@ new: warn once, never crash.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from interninbox.models import Listing
@@ -32,7 +33,12 @@ class State:
 
     def save(self, path: Path) -> None:
         payload = {"version": _VERSION, "seen": self._seen}
-        path.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        text = json.dumps(payload, indent=1, sort_keys=True) + "\n"
+        # Write-then-rename: a crash, Ctrl-C, or full disk mid-write can
+        # never leave a half-written (corrupt) state file behind.
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
 
 
 def load_state(path: Path) -> State:

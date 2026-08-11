@@ -280,3 +280,112 @@ def test_companies_lists_starter_entries(capsys: pytest.CaptureFixture[str]) -> 
     assert '"lever:plaid"' in out
     assert '"ashby:linear"' in out
     assert "verify" in out.lower()
+
+
+def test_progress_lines_written_when_tty(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from interninbox.cli import _scan_boards
+    from interninbox.config import load_config
+    from interninbox.fetch import Fetcher
+    from interninbox.models import ScanResult
+
+    config = load_config(write_config(tmp_path, THREE_BOARDS))
+    result = ScanResult()
+    with Fetcher(transport=make_transport(route), sleep=lambda _: None) as fetcher:
+        _scan_boards(config, fetcher, result, progress=True)
+    err = capsys.readouterr().err
+    assert "[1/3] greenhouse:aurora-widgets ..." in err
+    assert "[3/3] ashby:harborline ..." in err
+
+
+def test_no_progress_lines_when_not_a_tty(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, THREE_BOARDS)
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    assert "[1/3]" not in capsys.readouterr().err  # capsys stderr is not a tty
+
+
+def test_keyboard_interrupt_is_clean_and_130(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def interrupt(request: httpx.Request) -> httpx.Response:
+        raise KeyboardInterrupt
+
+    config = write_config(tmp_path, THREE_BOARDS)
+    code = main(["scan", "--config", str(config)], transport=make_transport(interrupt), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 130
+    assert "interrupted" in captured.err
+
+
+def test_unreadable_config_is_friendly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = write_config(tmp_path, THREE_BOARDS)
+    real_open = Path.open
+
+    def deny(self: Path, *args: object, **kwargs: object):
+        if self == config:
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny)
+    code = main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "could not read" in captured.err
+
+
+def test_init_unwritable_directory_is_friendly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def deny(self: Path, *args: object, **kwargs: object) -> int:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "write_text", deny)
+    assert main(["init"], **NO_SLEEP) == 1
+    assert "could not write" in capsys.readouterr().err
+
+
+def test_filter_loosening_does_not_flood_new_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Scan once with a filter that hides the Design Intern.
+    write_config(
+        tmp_path,
+        'companies = ["ashby:harborline"]\n[filters]\nexclude_keywords = ["design"]\n',
+    )
+    config = tmp_path / "interninbox.toml"
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    capsys.readouterr()
+    # Loosen the filter: the Design Intern was FETCHED before, so it is not "new".
+    write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    code = main(
+        ["scan", "--config", str(config), "--new-only"],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Design Intern" not in out
+
+
+def test_usajobs_only_scan_works_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path, '[usajobs]\nenabled = true\nemail = "fixture@example.test"\n'
+    )
+    code = main(
+        ["scan", "--config", str(config)],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={"USAJOBS_API_KEY": "fixture-key"},
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Student Trainee (Information Technology)" in captured.out
