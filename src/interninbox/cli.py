@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from interninbox import __version__
+from interninbox import __version__, wizard
 from interninbox import companies as companies_mod
 from interninbox import registry as registry_mod
 from interninbox.adapters import ADAPTERS, usajobs
@@ -88,6 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"path to the seen-listings state file (default: {STATE_FILE_NAME} next to "
         "the config, or a name derived from a non-default config filename)",
     )
+    scan_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="ask location/role/companies questions before scanning "
+        "(automatic on a terminal when no config exists)",
+    )
     scan_parser.set_defaults(func=_cmd_scan)
 
     companies_parser = subparsers.add_parser(
@@ -107,13 +113,16 @@ def main(
     transport: httpx.BaseTransport | None = None,
     sleep: Callable[[float], None] = time.sleep,
     env: Mapping[str, str] | None = None,
+    input_fn: Callable[[str], str] | None = None,
 ) -> int:
-    """CLI entry. `transport`, `sleep`, and `env` are injectable for tests."""
+    """CLI entry. `transport`, `sleep`, `env`, `input_fn` are injectable for tests."""
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         resolved_env = env if env is not None else os.environ
-        return args.func(args, transport=transport, sleep=sleep, env=resolved_env)
+        return args.func(
+            args, transport=transport, sleep=sleep, env=resolved_env, input_fn=input_fn
+        )
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -187,8 +196,34 @@ def _cmd_scan(
     transport: httpx.BaseTransport | None,
     sleep: Callable[[float], None],
     env: Mapping[str, str],
+    input_fn: Callable[[str], str] | None,
 ) -> int:
-    config = load_config(args.config)
+    wizard_wants = args.interactive or (
+        not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
+    )
+    answers = None
+    if wizard_wants:
+        ask = input_fn if input_fn is not None else input
+        existing = load_config(args.config) if args.config.is_file() else None
+        answers = wizard.run(
+            input_fn=ask,
+            print_fn=lambda line: print(line, file=sys.stderr),
+            config_companies=len(existing.companies) if existing else 0,
+        )
+        # Rebase on the existing config (or an empty one) so an --interactive
+        # run only overrides what the wizard actually asked about: locations,
+        # roles, and the registry tier. Everything else the user configured —
+        # exclude_keywords, match_keywords, remote_ok, [usajobs] — survives.
+        base = existing if existing is not None else Config(companies=())
+        config = dataclasses.replace(
+            base,
+            filters=dataclasses.replace(
+                base.filters, locations=answers.locations, roles=answers.roles
+            ),
+            registry=base.registry if answers.tier == "config" else answers.tier,
+        )
+    else:
+        config = load_config(args.config)
     state_path = args.state if args.state else default_state_path(args.config)
     state = load_state(state_path)
     if state.warning:
@@ -233,6 +268,14 @@ def _cmd_scan(
         print(format_markdown(result))
     else:
         print(format_table(result))
+
+    if answers is not None and not args.config.is_file() and answers.tier != "config":
+        ask = input_fn if input_fn is not None else input
+        reply = ask(f"Save these choices to {args.config}? [y/N] ").strip().lower()
+        if reply in ("y", "yes"):
+            args.config.write_text(wizard.render_config(answers), encoding="utf-8")
+            print(f"Wrote {args.config} — next time, plain `interninbox scan` "
+                  "uses it.", file=sys.stderr)
 
     attempted = result.companies_scanned + result.companies_failed
     if attempted and result.companies_scanned == 0:

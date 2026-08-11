@@ -496,3 +496,64 @@ def test_large_scan_prints_scale_note(
                 **NO_SLEEP) == 0
     err = capsys.readouterr().err
     assert "25 boards" in err and "~" in err  # scale + rough estimate disclosed
+
+
+def test_interactive_scan_without_config_runs_and_offers_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
+    )
+    monkeypatch.chdir(tmp_path)
+    # location blank, roles blank, companies -> [1] all, save? -> y
+    scripted = iter(["", "", "1", "y"])
+    code = main(
+        ["scan", "--interactive"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+        input_fn=lambda prompt: next(scripted),
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Platform Engineering Intern (Fall)" in captured.out
+    assert (tmp_path / "interninbox.toml").is_file()  # saved on request
+
+
+def test_interactive_save_declined_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from interninbox.registry import RegistryCompany
+
+    monkeypatch.setattr(
+        "interninbox.registry.REGISTRY",
+        (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
+    )
+    monkeypatch.chdir(tmp_path)
+    scripted = iter(["", "", "1", "n"])
+    code = main(
+        ["scan", "--interactive"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+        input_fn=lambda prompt: next(scripted),
+    )
+    capsys.readouterr()
+    assert code == 0
+    assert not (tmp_path / "interninbox.toml").exists()
+
+
+def test_missing_config_without_tty_still_errors(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Non-interactive (cron/pipes): behavior is unchanged from today.
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml")],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    assert code == 1
+    assert "interninbox init" in capsys.readouterr().err
