@@ -2,6 +2,7 @@
 
 import datetime as dt
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -136,3 +137,32 @@ def test_v1_state_file_still_recognized_and_upgraded(tmp_path: Path) -> None:
     reloaded = load_state(path)
     assert not reloaded.is_new(listing)  # survives the upgrade
     assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
+
+
+def test_concurrent_saves_use_process_unique_temp_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Two overlapping processes must not collide on one shared "<state>.tmp":
+    # a shared temp file lets one process's rename pull the file out from under
+    # the other's os.replace. The temp name is per-process.
+    path = tmp_path / ".interninbox-state.json"
+    temps: list[str] = []
+    real_replace = os.replace
+
+    def spy_replace(src: object, dst: object) -> None:
+        temps.append(Path(str(src)).name)
+        real_replace(src, dst)
+
+    monkeypatch.setattr("interninbox.state.os.replace", spy_replace)
+
+    monkeypatch.setattr("interninbox.state.os.getpid", lambda: 111)
+    proc_a = load_state(path)
+    proc_a.record([make_listing(listing_id="A")], now=_NOW)
+    proc_a.save(path, now=_NOW)
+
+    monkeypatch.setattr("interninbox.state.os.getpid", lambda: 222)
+    proc_b = load_state(path)
+    proc_b.record([make_listing(listing_id="B")], now=_NOW)
+    proc_b.save(path, now=_NOW)
+
+    assert temps[0] != temps[1]  # different processes -> different temp files

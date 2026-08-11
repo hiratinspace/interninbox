@@ -12,11 +12,14 @@ were `{"url": ...}`) still load: their entries are recognized as seen and
 re-stamped with the current time on the next save.
 
 Two robustness properties matter for unattended (cron) use:
-  - writes are atomic (temp file + `os.replace`), so a crash mid-write can
-    never leave a half-written file;
-  - saves union-merge with whatever is on disk at save time, so two
-    overlapping runs accumulate each other's listings instead of one
-    clobbering the other.
+  - writes are atomic (a per-process temp file + `os.replace`), so a crash
+    mid-write can never leave a half-written file and two overlapping runs
+    never collide on one shared temp file;
+  - saves union-merge with whatever is on disk at save time, so an overlapping
+    run's additions are re-read and preserved rather than blindly clobbered.
+    This is best-effort, not a lock: a genuinely simultaneous read/replace
+    interleave can still lose one addition (full safety needs file locking —
+    see KNOWN-ISSUES M8).
 """
 
 from __future__ import annotations
@@ -82,11 +85,17 @@ class State:
         }
         payload = {"version": _VERSION, "seen": kept}
         text = json.dumps(payload, indent=1, sort_keys=True) + "\n"
-        # Write-then-rename: a crash, Ctrl-C, or full disk mid-write can
-        # never leave a half-written (corrupt) state file behind.
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
+        # Write-then-rename: a crash, Ctrl-C, or full disk mid-write can never
+        # leave a half-written (corrupt) state file behind. The temp name is
+        # per-process so two overlapping runs never share (and rename away)
+        # one another's temp file.
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError:
+            tmp.unlink(missing_ok=True)  # never leave our temp file behind
+            raise
 
 
 def _utcnow() -> dt.datetime:
