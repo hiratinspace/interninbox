@@ -34,6 +34,7 @@ class Filters:
     include_keywords: tuple[str, ...] = ()
     exclude_keywords: tuple[str, ...] = ()
     match_keywords: tuple[str, ...] = ()
+    roles: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
     remote_ok: bool = True
 
@@ -99,10 +100,19 @@ def _parse_filters(raw: object) -> Filters:
         raise ConfigError("[filters] must be a table")
     include = _string_list(raw.get("include_keywords"), where="filters.include_keywords")
     exclude = _string_list(raw.get("exclude_keywords"), where="filters.exclude_keywords")
+    roles = _string_list(raw.get("roles"), where="filters.roles")
+    if roles:
+        from interninbox.roles import expand_roles
+
+        try:
+            expand_roles(roles)  # validate names now, fail with a friendly message
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
     return Filters(
         include_keywords=include,
         exclude_keywords=exclude,
         match_keywords=_string_list(raw.get("match_keywords"), where="filters.match_keywords"),
+        roles=roles,
         locations=_string_list(raw.get("locations"), where="filters.locations"),
         remote_ok=_boolean(raw.get("remote_ok"), where="filters.remote_ok", default=True),
     )
@@ -202,6 +212,9 @@ exclude_keywords = []
 # signal — "internship AND security". Whole-word, case-insensitive. This
 # NARROWS results; include_keywords above BROADENS them.
 match_keywords = []
+# Named role presets that narrow to a field — `interninbox roles` lists them.
+# Example: roles = ["cybersecurity"]  keeps only security internships.
+roles = []
 # Keep only listings whose location contains one of these as a whole word
 # (case-insensitive): "NY" matches "Albany, NY" but not "Sunnyvale". Empty =
 # keep every location. A listing that lists no location at all passes only

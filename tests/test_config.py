@@ -136,3 +136,19 @@ def test_nothing_to_scan_is_an_error(tmp_path: Path) -> None:
     path.write_text("companies = []\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="nothing to scan"):
         load_config(path)
+
+
+def test_filters_roles_parsed_and_validated(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text(
+        'companies = ["greenhouse:stripe"]\n[filters]\nroles = ["cybersecurity"]\n',
+        encoding="utf-8",
+    )
+    assert load_config(path).filters.roles == ("cybersecurity",)
+
+    path.write_text(
+        'companies = ["greenhouse:stripe"]\n[filters]\nroles = ["wizardry"]\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="wizardry"):
+        load_config(path)

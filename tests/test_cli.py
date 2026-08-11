@@ -439,3 +439,19 @@ def test_location_alias_full_state_name_matches_abbreviation(
     out = capsys.readouterr().out
     # "Washington" expands to "WA", matching the board's "Seattle, WA".
     assert "Platform Engineering Intern (Fall)" in out
+
+
+def test_roles_narrow_scan_results(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = write_config(tmp_path, THREE_BOARDS + '[filters]\nroles = ["software"]\n')
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    assert "Software Engineering Intern (Summer 2027)" in out
+    assert "Platform Engineering Intern (Fall)" in out  # "platform" is a software keyword
+    assert "Cartography Engineering Intern" not in out  # no software keyword in title
+
+
+def test_roles_command_lists_presets(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["roles"], **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    assert "cybersecurity" in out and "finance" in out
+    assert "security" in out  # keywords are shown, not just names

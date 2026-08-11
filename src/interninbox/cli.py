@@ -27,6 +27,7 @@ from interninbox.filters import matches
 from interninbox.locations import expand_location_terms
 from interninbox.models import AdapterError, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
+from interninbox.roles import expand_roles
 from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
 
 
@@ -92,6 +93,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     companies_parser.set_defaults(func=_cmd_companies)
 
+    roles_parser = subparsers.add_parser("roles", help="print the role presets")
+    roles_parser.set_defaults(func=_cmd_roles)
+
     return parser
 
 
@@ -141,10 +145,23 @@ def _cmd_companies(args: argparse.Namespace, **_: object) -> int:
     return 0
 
 
+def _cmd_roles(args: argparse.Namespace, **_: object) -> int:
+    from interninbox import roles as roles_mod
+
+    print(roles_mod.render())
+    return 0
+
+
 def _effective_filters(config: Config) -> Filters:
-    """Scan-time filter view: config values with aliases expanded."""
+    """Scan-time filter view: aliases expanded, role presets merged in."""
+    role_keywords = expand_roles(config.filters.roles)
+    merged = config.filters.match_keywords + tuple(
+        keyword for keyword in role_keywords
+        if keyword not in config.filters.match_keywords
+    )
     return dataclasses.replace(
         config.filters,
+        match_keywords=merged,
         locations=expand_location_terms(config.filters.locations),
     )
 
