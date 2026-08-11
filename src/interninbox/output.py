@@ -67,7 +67,21 @@ def summary_line(result: ScanResult) -> str:
 def format_table(result: ScanResult) -> str:
     listings = sort_listings(result.listings)
     if not listings:
-        return "No matching internships found.\n" + summary_line(result)
+        lines = ["No matching internships found."]
+        if result.listings_matched:
+            lines.append(
+                f"({result.listings_matched} matched but were already seen — "
+                "nothing new since the last scan)"
+            )
+        elif result.listings_checked:
+            lines.append(
+                f"({result.listings_checked} listings checked; none matched your filters "
+                "— internships may be off-season, or try loosening [filters])"
+            )
+        elif result.companies_scanned:
+            lines.append("(the boards responded but list no jobs at all right now)")
+        lines.append(summary_line(result))
+        return "\n".join(lines)
     header = ("COMPANY", "TITLE", "LOCATIONS", "POSTED", "URL")
     rows = [_row(listing) for listing in listings]
     widths = [max(len(row[i]) for row in [header, *rows]) for i in range(4)]
@@ -99,6 +113,7 @@ def format_json(result: ScanResult) -> str:
             "internships": len(listings),
             "companies_scanned": result.companies_scanned,
             "companies_failed": result.companies_failed,
+            "listings_checked": result.listings_checked,
         },
     }
     return json.dumps(payload, indent=2)

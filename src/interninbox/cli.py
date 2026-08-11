@@ -157,7 +157,9 @@ def _cmd_scan(
         _scan_boards(config, fetcher, result, progress=progress)
         _scan_usajobs(config, fetcher, env, result, progress=progress)
 
+    result.listings_checked = len(result.listings)
     matched = [listing for listing in result.listings if matches(listing, config.filters)]
+    result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
     result.listings = shown
 

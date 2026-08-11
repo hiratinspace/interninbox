@@ -22,6 +22,7 @@ def _result() -> ScanResult:
         ],
         companies_scanned=2,
         companies_failed=1,
+        listings_checked=3,
     )
 
 
@@ -63,6 +64,7 @@ def test_json_output_shape() -> None:
         "internships": 3,
         "companies_scanned": 2,
         "companies_failed": 1,
+        "listings_checked": 3,
     }
     first = payload["listings"][0]
     assert first["title"] == "Newest Intern"
@@ -119,3 +121,21 @@ def test_markdown_strips_ansi_and_escapes_link_syntax() -> None:
     # A ')' in the URL cannot terminate the [apply](...) link early.
     row = text.splitlines()[2]
     assert "[apply](https://boards.example.test/jobs/1%29?tracking=%28x)" in row
+
+
+def test_empty_table_explains_filters_matched_none() -> None:
+    result = ScanResult(companies_scanned=3, listings_checked=57)
+    text = format_table(result)
+    assert "57 listings checked" in text
+
+
+def test_empty_table_explains_empty_boards() -> None:
+    result = ScanResult(companies_scanned=3, listings_checked=0)
+    text = format_table(result)
+    assert "no jobs at all" in text
+
+
+def test_empty_table_explains_nothing_new() -> None:
+    result = ScanResult(companies_scanned=1, listings_checked=10, listings_matched=4)
+    text = format_table(result)
+    assert "already seen" in text
