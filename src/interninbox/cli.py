@@ -24,7 +24,7 @@ from interninbox.fetch import Fetcher
 from interninbox.filters import matches
 from interninbox.models import AdapterError, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
-from interninbox.state import STATE_FILE_NAME, load_state
+from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
 
 
 def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console script
@@ -79,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--state",
         type=Path,
         default=None,
-        help=f"path to the seen-listings state file (default: {STATE_FILE_NAME} "
-        "next to the config)",
+        help=f"path to the seen-listings state file (default: {STATE_FILE_NAME} next to "
+        "the config, or a name derived from a non-default config filename)",
     )
     scan_parser.set_defaults(func=_cmd_scan)
 
@@ -146,7 +146,7 @@ def _cmd_scan(
     env: Mapping[str, str],
 ) -> int:
     config = load_config(args.config)
-    state_path = args.state if args.state else args.config.resolve().parent / STATE_FILE_NAME
+    state_path = args.state if args.state else default_state_path(args.config)
     state = load_state(state_path)
     if state.warning:
         print(f"warning: {state.warning}", file=sys.stderr)

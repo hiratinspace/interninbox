@@ -17,11 +17,14 @@ class Listing:
     url: str
     locations: tuple[str, ...] = ()
     posted_at: dt.datetime | None = None
+    # Overrides the derived state key when the default one would be unstable —
+    # e.g. USAJOBS, whose `company` is a mutable free-text agency name.
+    identity: str | None = None
 
     @property
     def key(self) -> str:
         """Stable identity used by the seen-state file."""
-        return f"{self.source}:{self.company}:{self.listing_id}"
+        return self.identity or f"{self.source}:{self.company}:{self.listing_id}"
 
 
 class AdapterError(Exception):

@@ -138,7 +138,7 @@ include_keywords = []
 # Drop any listing whose title contains one of these (case-insensitive).
 exclude_keywords = ["mechanical"]
 
-# Keep only listings whose location contains one of these substrings
+# Keep only listings whose location contains one of these as a whole word
 # (case-insensitive). Empty = keep every location.
 locations = ["New York", "Remote"]
 
@@ -161,7 +161,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal |
 | `filters.match_keywords` | list of strings | `[]` | Whole-word title keywords required on top of the internship signal (narrows; `include_keywords` broadens) |
 | `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
-| `filters.locations` | list of strings | `[]` | Location substrings to keep; empty keeps everything |
+| `filters.locations` | list of strings | `[]` | Whole-word location terms to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
 | `usajobs.enabled` | bool | `false` | Turn the USAJOBS adapter on |
 | `usajobs.email` | string | (none) | The email your USAJOBS key is registered under |
@@ -207,10 +207,10 @@ A listing with no stated location is **dropped** when `locations` is set — the
 is nothing to match against. Leave `locations = []` to keep such listings
 (boards often omit location metadata).
 
-Location matching is plain substring matching: `"NY"` also matches
-"Su**nny**vale, CA", and "New York" will not catch a board that writes "NYC".
-Prefer full names and list both forms when a city has a common abbreviation:
-`locations = ["New York", "NYC"]`.
+Location matching is **whole-word**, case-insensitive: `"NY"` matches
+"Albany, **NY**" but not "Su**nny**vale, CA". It does not know aliases, so
+"New York" will not catch a board that writes "NYC" — list both forms when a
+place has a common abbreviation: `locations = ["New York", "NYC"]`.
 
 ## `--new-only` and the state file
 
@@ -224,11 +224,15 @@ hid it, so loosening a filter later will not flood `--new-only` with old posts.
 - First scan: everything is new.
 - Missing or corrupt state file: everything counts as new: one warning,
   never a crash.
-- The state file is per-config-location; delete it any time to reset. `init`
-  writes only the TOML — if your config lives in a git repository, add
-  `.interninbox-state.json` to your `.gitignore` yourself.
-- Two different configs in the same directory share the default state file —
-  pass `--state` to keep them separate.
+- `init` writes only the TOML — if your config lives in a git repository, add
+  `.interninbox-state.json` to your `.gitignore` yourself. Delete the state
+  file any time to reset.
+- Each config gets its own state file: the default `interninbox.toml` uses
+  `.interninbox-state.json`, while `work.toml` uses
+  `.interninbox-state.work.json`, so two configs in one directory don't share
+  state. Pass `--state PATH` to override.
+- The file stores only a listing key and the date it was last seen (no URLs);
+  entries not seen for a year are pruned, so it never grows without bound.
 - The POSTED column means slightly different things per source: Greenhouse
   first-published, Lever created, Ashby last-published (a repost looks new),
   USAJOBS announcement-open date.

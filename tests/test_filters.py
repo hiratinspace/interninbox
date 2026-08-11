@@ -100,6 +100,20 @@ def test_remote_ok_false_drops_remote_only() -> None:
     assert matches(make_listing(locations=("New York, NY", "Remote")), filters)
 
 
+def test_location_filter_is_whole_word_not_substring() -> None:
+    # The classic false positive: "NY" must not match inside "Sunnyvale".
+    assert not matches(make_listing(locations=("Sunnyvale, CA",)), Filters(locations=("NY",)))
+    # ...but it still matches a genuine ", NY" token.
+    assert matches(make_listing(locations=("Albany, NY",)), Filters(locations=("NY",)))
+
+
+def test_location_filter_multiword_and_punctuated_terms() -> None:
+    assert matches(make_listing(locations=("New York, NY",)), Filters(locations=("New York",)))
+    # A term ending in punctuation still anchors correctly.
+    assert matches(make_listing(locations=("Washington, D.C.",)), Filters(locations=("D.C.",)))
+    assert not matches(make_listing(locations=("Decatur, IL",)), Filters(locations=("D.C.",)))
+
+
 def test_match_keywords_narrow_within_internships() -> None:
     filters = Filters(match_keywords=("security",))
     assert matches(make_listing(title="Security Engineering Intern"), filters)

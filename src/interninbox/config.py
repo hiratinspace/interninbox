@@ -202,9 +202,10 @@ exclude_keywords = []
 # signal — "internship AND security". Whole-word, case-insensitive. This
 # NARROWS results; include_keywords above BROADENS them.
 match_keywords = []
-# Keep only listings whose location contains one of these substrings
-# (case-insensitive). Empty = keep every location. A listing that lists no
-# location at all passes only when this is empty.
+# Keep only listings whose location contains one of these as a whole word
+# (case-insensitive): "NY" matches "Albany, NY" but not "Sunnyvale". Empty =
+# keep every location. A listing that lists no location at all passes only
+# when this is empty.
 locations = []
 # When true (the default), remote listings pass the locations filter too.
 # When false, remote-only listings are dropped.

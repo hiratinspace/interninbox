@@ -160,4 +160,7 @@ def parse_item(item: object) -> Listing:
         url=position_uri,
         locations=tuple(locations),
         posted_at=posted_at,
+        # Key on the stable Control Number only — the org name displayed above
+        # can change (agency rename) without making this a "new" listing (L6).
+        identity=f"{SOURCE}:{control_number}",
     )
