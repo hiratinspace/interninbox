@@ -33,8 +33,20 @@ _SIGNAL_PATTERNS: tuple[str, ...] = (
     r"\bundergraduate\s+researcher\b",
     r"\bworking\s+student\b",
     # US-federal Pathways titling: "Student Trainee (Information Technology)".
+    # Bare "Pathways" would also catch "Pathways Recent Graduates", a
+    # post-degree full-time program — so require the intern word.
     r"\bstudent\s+trainee\b",
-    r"\bpathways\b",
+    r"\bpathways\s+intern(ship)?s?\b",
+    # Program titles that don't say "intern": "... - Summer 2027",
+    # UK industrial placements, fellowships, and the standard German/French
+    # student-role words these ATSes host EU boards under.
+    r"\bsummer\s+20\d{2}\b",
+    r"\bindustrial\s+placement\b",
+    r"\bplacement\s+(student|year)\b",
+    r"\bfellowship\b",
+    r"\bpraktikant(in)?\b",
+    r"\bwerkstudent(in)?\b",
+    r"\bstagiaire\b",
 )
 
 INTERNSHIP_SIGNAL = re.compile("|".join(_SIGNAL_PATTERNS), re.IGNORECASE)
@@ -43,7 +55,7 @@ INTERNSHIP_SIGNAL = re.compile("|".join(_SIGNAL_PATTERNS), re.IGNORECASE)
 # seniority markers — an intern posting is never "Senior" or "Staff".
 STAFF_ROLE = re.compile(
     r"\b(manager|director|coordinator|recruiter|recruiting|head of|team lead|supervisor"
-    r"|professor|instructor|senior|staff|principal|sr\.)\b",
+    r"|professor|instructor|senior|staff|principal)\b|\bsr\b",
     re.IGNORECASE,
 )
 # Roman-numeral levels are case-sensitive on purpose: as lowercase words,
