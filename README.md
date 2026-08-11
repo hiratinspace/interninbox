@@ -10,6 +10,7 @@ public job boards, in one command, on your machine.
 [![CI](https://github.com/hiratinspace/interninbox/actions/workflows/ci.yml/badge.svg)](https://github.com/hiratinspace/interninbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![PyPI](https://img.shields.io/pypi/v/interninbox.svg)](https://pypi.org/project/interninbox/)
 [![Zero API keys](https://img.shields.io/badge/API%20keys-none%20required-brightgreen.svg)](#configuration)
 
 </div>
@@ -55,13 +56,13 @@ optionally, the official **USAJOBS** API for federal Pathways internships.
 With **pipx** (recommended: isolated, on your PATH):
 
 ```sh
-pipx install git+https://github.com/hiratinspace/interninbox
+pipx install interninbox
 ```
 
 With **uv**:
 
 ```sh
-uv tool install git+https://github.com/hiratinspace/interninbox
+uv tool install interninbox
 ```
 
 Or run from a checkout:
@@ -73,8 +74,9 @@ uv sync
 uv run interninbox --help
 ```
 
-Requires Python 3.11+. PyPI publication is planned; after that,
-`pipx install interninbox` will work directly.
+Requires Python 3.11+. Both commands install from
+[PyPI](https://pypi.org/project/interninbox/); installing straight from git
+also works (`pipx install git+https://github.com/hiratinspace/interninbox`).
 
 ## Quickstart
 
