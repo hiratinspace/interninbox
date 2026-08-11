@@ -1,5 +1,5 @@
 [project]
-name = "interninbox-cli"
+name = "interninbox"
 version = "0.1.0"
 description = "Zero-API-key internship finder: list your target companies, run one command, get matching internships in your terminal."
 readme = "README.md"
