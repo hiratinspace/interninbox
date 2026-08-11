@@ -110,3 +110,12 @@ def test_filters_wrong_types(tmp_path: Path) -> None:
 def test_usajobs_enabled_requires_email(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="usajobs.email is not set"):
         load_config(write(tmp_path, 'companies = ["lever:plaid"]\n[usajobs]\nenabled = true'))
+
+
+def test_match_keywords_parsed(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text(
+        'companies = ["greenhouse:stripe"]\n[filters]\nmatch_keywords = ["security"]\n',
+        encoding="utf-8",
+    )
+    assert load_config(path).filters.match_keywords == ("security",)

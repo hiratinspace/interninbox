@@ -60,6 +60,20 @@ def has_internship_signal(title: str, include_keywords: tuple[str, ...] = ()) ->
     return any(keyword.lower() in lowered for keyword in include_keywords)
 
 
+def matches_required_keywords(title: str, keywords: tuple[str, ...]) -> bool:
+    """True when `title` contains at least one keyword as a whole word.
+
+    An empty list means no requirement. Unlike include_keywords (which is
+    OR-ed INTO the internship signal and so broadens results), this is
+    AND-ed with it and narrows.
+    """
+    if not keywords:
+        return True
+    return any(
+        re.search(rf"\b{re.escape(keyword)}\b", title, re.IGNORECASE) for keyword in keywords
+    )
+
+
 def is_staff_role(title: str) -> bool:
     return bool(STAFF_ROLE.search(title) or LEVEL_MARKER.search(title))
 
@@ -87,6 +101,8 @@ def _passes_locations(listing: Listing, filters: Filters) -> bool:
 def matches(listing: Listing, filters: Filters) -> bool:
     """The full filter chain for one listing."""
     if not has_internship_signal(listing.title, filters.include_keywords):
+        return False
+    if not matches_required_keywords(listing.title, filters.match_keywords):
         return False
     if is_staff_role(listing.title):
         return False

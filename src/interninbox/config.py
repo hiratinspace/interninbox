@@ -33,6 +33,7 @@ class Company:
 class Filters:
     include_keywords: tuple[str, ...] = ()
     exclude_keywords: tuple[str, ...] = ()
+    match_keywords: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
     remote_ok: bool = True
 
@@ -101,6 +102,7 @@ def _parse_filters(raw: object) -> Filters:
     return Filters(
         include_keywords=include,
         exclude_keywords=exclude,
+        match_keywords=_string_list(raw.get("match_keywords"), where="filters.match_keywords"),
         locations=_string_list(raw.get("locations"), where="filters.locations"),
         remote_ok=_boolean(raw.get("remote_ok"), where="filters.remote_ok", default=True),
     )
@@ -189,6 +191,10 @@ companies = [
 include_keywords = []
 # Drop any listing whose title contains one of these (case-insensitive).
 exclude_keywords = []
+# Require at least one of these words in the title, on top of the internship
+# signal — "internship AND security". Whole-word, case-insensitive. This
+# NARROWS results; include_keywords above BROADENS them.
+match_keywords = []
 # Keep only listings whose location contains one of these substrings
 # (case-insensitive). Empty = keep every location. A listing that lists no
 # location at all passes only when this is empty.

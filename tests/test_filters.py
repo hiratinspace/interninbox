@@ -98,3 +98,22 @@ def test_remote_ok_false_drops_remote_only() -> None:
     assert not matches(make_listing(locations=("Remote",)), filters)
     # A listing with a physical location alongside remote survives.
     assert matches(make_listing(locations=("New York, NY", "Remote")), filters)
+
+
+def test_match_keywords_narrow_within_internships() -> None:
+    filters = Filters(match_keywords=("security",))
+    assert matches(make_listing(title="Security Engineering Intern"), filters)
+    assert not matches(make_listing(title="Software Engineering Intern"), filters)
+    # match_keywords never widens: a non-internship stays out.
+    assert not matches(make_listing(title="Security Engineer"), filters)
+
+
+def test_match_keywords_are_whole_word() -> None:
+    filters = Filters(match_keywords=("ai",))
+    assert not matches(make_listing(title="Chair of Maintenance Intern"), filters)
+    assert matches(make_listing(title="AI Research Intern"), filters)
+
+
+def test_match_keywords_list_is_any_of() -> None:
+    filters = Filters(match_keywords=("security", "data"))
+    assert matches(make_listing(title="Data Platform Intern"), filters)
