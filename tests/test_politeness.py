@@ -154,3 +154,42 @@ def test_persistent_429_reports_rate_limit_not_slug() -> None:
     ) as fetcher:
         with pytest.raises(AdapterError, match="rate limited"):
             fetcher.get_json("https://api.lever.co/v0/postings/one")
+
+
+def test_oversized_response_is_refused() -> None:
+    big = b'{"jobs": "' + b"x" * 2048 + b'"}'
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, content=big)),
+        sleep=lambda _: None,
+        max_response_bytes=1024,
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="larger than"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
+
+
+def test_pathological_nesting_is_an_adapter_error() -> None:
+    depth = 100_000
+    body = b"[" * depth + b"]" * depth
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, content=body)),
+        sleep=lambda _: None,
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="nested too deeply"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
+
+
+def test_dripping_response_hits_read_deadline() -> None:
+    clock = FakeClock()
+
+    def drip():
+        yield b'{"jobs"'
+        clock.now += 61.0  # the second chunk arrives after the deadline
+        yield b": []}"
+
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, content=drip())),
+        sleep=lambda _: None,
+        clock=clock,
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="too slowly"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
