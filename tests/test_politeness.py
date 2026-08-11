@@ -59,7 +59,7 @@ def test_honest_user_agent_sent() -> None:
     with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
         fetcher.get_json("https://api.lever.co/v0/postings/one")
     assert seen[0].headers["User-Agent"] == USER_AGENT
-    assert "interninbox-cli/" in USER_AGENT
+    assert "interninbox/" in USER_AGENT
 
 
 def test_transient_5xx_retried_once_then_succeeds() -> None:

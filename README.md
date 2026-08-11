@@ -1,13 +1,13 @@
 <div align="center">
 
-# interninbox-cli
+# interninbox
 
 **Find internships from your terminal.**
 
 List your target companies once, then get every matching internship from their
 public job boards, in one command, on your machine.
 
-[![CI](https://github.com/hiratinspace/interninbox-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/hiratinspace/interninbox-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/hiratinspace/interninbox/actions/workflows/ci.yml/badge.svg)](https://github.com/hiratinspace/interninbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![Zero API keys](https://img.shields.io/badge/API%20keys-none%20required-brightgreen.svg)](#configuration)
@@ -55,20 +55,20 @@ optionally, the official **USAJOBS** API for federal Pathways internships.
 With **pipx** (recommended: isolated, on your PATH):
 
 ```sh
-pipx install git+https://github.com/hiratinspace/interninbox-cli
+pipx install git+https://github.com/hiratinspace/interninbox
 ```
 
 With **uv**:
 
 ```sh
-uv tool install git+https://github.com/hiratinspace/interninbox-cli
+uv tool install git+https://github.com/hiratinspace/interninbox
 ```
 
 Or run from a checkout:
 
 ```sh
-git clone https://github.com/hiratinspace/interninbox-cli
-cd interninbox-cli
+git clone https://github.com/hiratinspace/interninbox
+cd interninbox
 uv sync
 uv run interninbox --help
 ```
@@ -256,7 +256,7 @@ that every adapter goes through; it is not a setting you can forget:
 - **15-second timeout**, at most **one retry**, and only on transient
   failures (network errors, 5xx).
 - Every request carries an honest User-Agent:
-  `interninbox-cli/<version> (+https://github.com/hiratinspace/interninbox-cli)`.
+  `interninbox/<version> (+https://github.com/hiratinspace/interninbox)`.
 - Only **documented public APIs** are used: the same endpoints the
   companies' own careers pages call. No HTML scraping, no automation of
   anything behind a login.
