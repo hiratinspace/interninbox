@@ -6,7 +6,11 @@
     "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0001/apply",
     "createdAt": 1785592800000,
     "workplaceType": "onsite",
-    "categories": { "location": "San Francisco, CA", "team": "Engineering" }
+    "categories": {
+      "location": "San Francisco, CA",
+      "allLocations": ["San Francisco, CA", "New York, NY"],
+      "team": "Engineering"
+    }
   },
   {
     "id": "d3adbeef-0002-4000-8000-000000000002",
