@@ -90,7 +90,7 @@ class Fetcher:
                 continue  # transient — retry once
             if response.status_code >= 400:
                 raise AdapterError(
-                    f"HTTP {response.status_code} from {host} — check the slug exists"
+                    f"HTTP {response.status_code} from {host}: check the slug exists"
                 )
             try:
                 return response.json()

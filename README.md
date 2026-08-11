@@ -4,7 +4,7 @@
 
 **Find internships from your terminal.**
 
-List your target companies once — get every matching internship from their
+List your target companies once, then get every matching internship from their
 public job boards, in one command, on your machine.
 
 [![CI](https://github.com/hiratinspace/interninbox-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/hiratinspace/interninbox-cli/actions/workflows/ci.yml)
@@ -27,7 +27,7 @@ plaid     Data Science Intern                     San Francisco   -           ht
 
 **No accounts. No API keys. No LLMs. Nothing leaves your machine.**
 It reads the documented public job-board APIs of **Greenhouse**, **Lever**, and
-**Ashby** — the same endpoints each company's own careers page calls — plus,
+**Ashby** (the same endpoints each company's own careers page calls) plus,
 optionally, the official **USAJOBS** API for federal Pathways internships.
 
 ---
@@ -52,7 +52,7 @@ optionally, the official **USAJOBS** API for federal Pathways internships.
 
 ## Install
 
-With **pipx** (recommended — isolated, on your PATH):
+With **pipx** (recommended: isolated, on your PATH):
 
 ```sh
 pipx install git+https://github.com/hiratinspace/interninbox-cli
@@ -73,7 +73,7 @@ uv sync
 uv run interninbox --help
 ```
 
-Requires Python 3.11+. PyPI publication is planned — after that,
+Requires Python 3.11+. PyPI publication is planned; after that,
 `pipx install interninbox-cli` will work directly.
 
 ## Quickstart
@@ -86,7 +86,7 @@ interninbox companies     # 2. prints 34 well-known companies to copy from
 interninbox scan          # 3. scans every configured company
 ```
 
-Edit `interninbox.toml` between steps 2 and 3 — add the companies you care
+Edit `interninbox.toml` between steps 2 and 3: add the companies you care
 about, tighten the filters if you like, and re-run `interninbox scan` whenever
 you want fresh results. Add `--new-only` to see only what appeared since your
 last scan.
@@ -110,7 +110,7 @@ last scan.
 | `--new-only` | Show only listings not seen by a previous scan |
 | `--state PATH` | Use a state file other than `.interninbox-state.json` next to the config |
 
-Exit codes: `0` on success (including partial failures — a company that fails
+Exit codes: `0` on success (including partial failures: a company that fails
 prints a one-line warning and never aborts your scan), `1` when the config is
 invalid or every company failed.
 
@@ -144,7 +144,7 @@ locations = ["New York", "Remote"]
 remote_ok = true
 
 # Optional: federal internships (Pathways program) via the official
-# USAJOBS API — see the USAJOBS section below.
+# USAJOBS API; see the USAJOBS section below.
 [usajobs]
 enabled = true
 email = "you@example.com"        # the email your API key is registered under
@@ -154,13 +154,13 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `companies` | list of `"ats:slug"` | — (required) | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
+| `companies` | list of `"ats:slug"` | (required) | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal |
 | `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
 | `filters.locations` | list of strings | `[]` | Location substrings to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
 | `usajobs.enabled` | bool | `false` | Turn the USAJOBS adapter on |
-| `usajobs.email` | string | — | The email your USAJOBS key is registered under |
+| `usajobs.email` | string | (none) | The email your USAJOBS key is registered under |
 | `usajobs.keywords` | list of strings | `[]` | Extra keyword filter passed to the USAJOBS query |
 | `usajobs.api_key_env` | string | `"USAJOBS_API_KEY"` | Name of the environment variable holding your key |
 
@@ -178,23 +178,23 @@ Open the company's careers page and look at the URL of an actual job listing:
 | `jobs.lever.co/acme/...` | `"lever:acme"` |
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
 
-If a scan reports `HTTP 404 — check the slug exists`, the slug is wrong or the
+If a scan reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or the
 company moved ATS providers. `interninbox companies` gives you 34 known-good
 entries to start from.
 
 ## How matching works
 
-All matching is local, deterministic heuristics — fast, free, and predictable:
+All matching is local, deterministic heuristics. Fast, free, and predictable:
 
-1. **Internship signal** — word-boundary regexes on the title: `intern`,
+1. **Internship signal**: word-boundary regexes on the title: `intern`,
    `internship`, `co-op`, `summer analyst`, `apprentice`, `student trainee`,
    and friends, OR any of your `include_keywords`. Word boundaries matter:
    *"International Program Manager"* and *"Internal Tools Engineer"* do **not**
    match.
-2. **Staff-role exclusion** — roles *about* interns rather than *for* them
+2. **Staff-role exclusion**: roles *about* interns rather than *for* them
    (recruiter, program manager, university relations) and unambiguous
    seniority markers (Senior, Staff, II/III) are dropped.
-3. **Your filters** — `exclude_keywords`, then `locations`/`remote_ok`.
+3. **Your filters**: `exclude_keywords`, then `locations`/`remote_ok`.
 
 A listing with no stated location passes the locations filter (boards often
 omit location metadata; dropping those silently would hide real internships).
@@ -203,12 +203,12 @@ omit location metadata; dropping those silently would hide real internships).
 
 Every scan records what it saw in a small state file
 (`.interninbox-state.json`, next to your config; override with `--state`).
-With `--new-only`, only listings absent from that file are shown — so "new"
+With `--new-only`, only listings absent from that file are shown, so "new"
 always means **"since my last scan"**, whether or not earlier scans used the
 flag.
 
 - First scan: everything is new.
-- Missing or corrupt state file: everything counts as new — one warning,
+- Missing or corrupt state file: everything counts as new: one warning,
   never a crash.
 - The state file is per-config-location and gitignored by `init`'s
   convention; delete it any time to reset.
@@ -227,7 +227,7 @@ requires a free key:
 3. Set `[usajobs] enabled = true` and `email = "..."`.
 
 Per USAJOBS's documented API contract, requests to it must carry the
-registered email as the User-Agent — this tool sends exactly that, for that
+registered email as the User-Agent; this tool sends exactly that, for that
 host only. If `[usajobs]` is enabled but the key variable is unset, the scan
 skips it with an info line and carries on.
 
@@ -249,7 +249,7 @@ flowchart LR
 ## Politeness, built in
 
 Being a good citizen is enforced in one place (`src/interninbox/fetch.py`)
-that every adapter goes through — it is not a setting you can forget:
+that every adapter goes through; it is not a setting you can forget:
 
 - Requests run **sequentially**, with at least **500 ms** between any two
   requests to the same host.
@@ -257,13 +257,13 @@ that every adapter goes through — it is not a setting you can forget:
   failures (network errors, 5xx).
 - Every request carries an honest User-Agent:
   `interninbox-cli/<version> (+https://github.com/hiratinspace/interninbox-cli)`.
-- Only **documented public APIs** are used — the same endpoints the
+- Only **documented public APIs** are used: the same endpoints the
   companies' own careers pages call. No HTML scraping, no automation of
   anything behind a login.
 
 ## Scope, honestly
 
-This tool does **one-shot local scans** — that's its whole job, and it does it
+This tool does **one-shot local scans**. That is its whole job, and it does it
 politely and fast. What it deliberately does *not* do:
 
 - verify a listing is still live (boards keep stale posts around),
@@ -279,7 +279,7 @@ you run it, you own your data, nothing phones home.
 
 **Why only Greenhouse, Lever, and Ashby?**
 They expose documented public board APIs designed for exactly this. Support
-for more sources may come — PRs welcome if the source has a documented public
+for more sources may come; PRs welcome if the source has a documented public
 API.
 
 **Does it store or send my data anywhere?**
@@ -287,11 +287,11 @@ No. The only writes are your config and the local state file. There is no
 telemetry of any kind.
 
 **A company I added returns 404.**
-The slug is wrong or the company changed ATS providers — see
+The slug is wrong or the company changed ATS providers; see
 [Finding a company's slug](#finding-a-companys-slug).
 
 **Can it email/notify me?**
-Not built in — pipe `--json` into whatever you like, or run it on a schedule
+Not built in. Pipe `--json` into whatever you like, or run it on a schedule
 with `--new-only` and a mail hook.
 
 ## Development
@@ -303,10 +303,10 @@ uv run ruff check .
 ```
 
 Layout: `src/interninbox/` (adapters, filters, fetcher, CLI),
-`tests/` with authored synthetic fixtures for fictional companies — no
+`tests/` with authored synthetic fixtures for fictional companies; no
 recorded third-party data, ever ([provenance note](tests/fixtures/README.md)).
 
-Support is best-effort via GitHub issues — see
+Support is best-effort via GitHub issues; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
