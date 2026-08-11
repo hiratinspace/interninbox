@@ -1,0 +1,36 @@
+# Example interninbox configuration.
+# Copy to interninbox.toml (or run `interninbox init`) and edit.
+
+# Target companies as "ats:slug". Find a company's ATS and slug from its
+# careers page URL:
+#   job-boards.greenhouse.io/<slug>  ->  "greenhouse:<slug>"
+#   jobs.lever.co/<slug>             ->  "lever:<slug>"
+#   jobs.ashbyhq.com/<slug>          ->  "ashby:<slug>"
+# `interninbox companies` prints a starter list of well-known companies.
+companies = [
+    "greenhouse:stripe",
+    "lever:plaid",
+    "ashby:linear",
+]
+
+[filters]
+# Extra title keywords to treat as an internship signal, in addition to the
+# built-in one (intern, internship, co-op, summer analyst, ...).
+include_keywords = []
+# Drop any listing whose title contains one of these (case-insensitive).
+exclude_keywords = []
+# Keep only listings whose location contains one of these substrings
+# (case-insensitive). Empty = keep every location.
+locations = []
+# When true (the default), remote listings pass the locations filter too.
+# When false, remote-only listings are dropped.
+remote_ok = true
+
+# Optional: federal internships from USAJOBS (Pathways program).
+# Requires a free API key from https://developer.usajobs.gov/apirequest/ —
+# the email below MUST be the one the key is registered under.
+# [usajobs]
+# enabled = true
+# email = "you@example.com"
+# keywords = ["software"]
+# api_key_env = "USAJOBS_API_KEY"
