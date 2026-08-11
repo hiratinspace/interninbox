@@ -122,3 +122,35 @@ def test_non_json_body_raises_adapter_error() -> None:
     ) as fetcher:
         with pytest.raises(AdapterError, match="not valid JSON"):
             fetcher.get_json("https://api.ashbyhq.com/posting-api/job-board/garbage")
+
+
+def test_401_mentions_key_or_blocking_not_slug() -> None:
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(401)), sleep=lambda _: None
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="request refused"):
+            fetcher.get_json("https://data.usajobs.gov/api/search")
+
+
+def test_429_retried_once_honoring_retry_after() -> None:
+    calls: list[int] = []
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        return json_response({"ok": True})
+
+    with Fetcher(transport=make_transport(handler), sleep=sleeps.append) as fetcher:
+        assert fetcher.get_json("https://api.lever.co/v0/postings/one") == {"ok": True}
+    assert len(calls) == 2
+    assert 3.0 in sleeps
+
+
+def test_persistent_429_reports_rate_limit_not_slug() -> None:
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(429)), sleep=lambda _: None
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="rate limited"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")
