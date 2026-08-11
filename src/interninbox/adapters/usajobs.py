@@ -2,9 +2,9 @@
 
 Endpoint: https://data.usajobs.gov/api/search — the official federal API.
 Unlike the ATS adapters this one requires a (free) API key, and its
-documented authentication contract is three headers: `Host`, `User-Agent`
-set to the email address the key was registered under, and
-`Authorization-Key`. That is why this adapter does NOT send this tool's
+documented authentication contract is two headers plus the URL-derived
+Host: `User-Agent` set to the email address the key was registered under,
+and `Authorization-Key`. That is why this adapter does NOT send this tool's
 normal User-Agent: the vendor's own contract for this API is that the UA
 *is* the registered email.
 
@@ -31,7 +31,6 @@ from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
 
 SEARCH_URL = "https://data.usajobs.gov/api/search"
-SEARCH_HOST = "data.usajobs.gov"
 
 RESULTS_PER_PAGE = 500
 MAX_PAGES = 5  # conservative cap; 2500 announcements is far beyond any intern search
@@ -41,9 +40,10 @@ COMPANY_LABEL = "usajobs"
 
 
 def _headers(api_key: str, email: str) -> dict[str, str]:
-    # The three documented auth headers, exactly — see module docstring.
+    # The documented auth contract: the User-Agent IS the registered email.
+    # Host is NOT set by hand — httpx derives it from the URL, so a redirect
+    # can never carry a stale data.usajobs.gov Host header elsewhere.
     return {
-        "Host": SEARCH_HOST,
         "User-Agent": email,
         "Authorization-Key": api_key,
     }
@@ -63,7 +63,10 @@ def fetch(fetcher: Fetcher, cfg: UsaJobsConfig, api_key: str) -> list[Listing]:
     fetched = 0
     for page_number in range(1, MAX_PAGES + 1):
         payload = fetcher.get_json(
-            SEARCH_URL, params={**params, "Page": str(page_number)}, headers=headers
+            SEARCH_URL,
+            params={**params, "Page": str(page_number)},
+            headers=headers,
+            follow_redirects=False,
         )
         items, count_all = _page_items(payload)
         if not items:

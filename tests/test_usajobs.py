@@ -27,7 +27,7 @@ def test_fetch_sends_documented_auth_headers(instant_fetcher) -> None:
     with instant_fetcher(make_transport(_paginated_handler(requests_seen))) as fetcher:
         usajobs.fetch(fetcher, CFG, "fixture-api-key")
     first = requests_seen[0]
-    # The three documented headers: Host, User-Agent = registered email, key.
+    # User-Agent = registered email, plus the key; Host comes from the URL.
     assert first.headers["User-Agent"] == "fixture@example.test"
     assert first.headers["Authorization-Key"] == "fixture-api-key"
     assert first.url.host == "data.usajobs.gov"
@@ -94,3 +94,18 @@ def test_fetch_stops_on_empty_page(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         assert usajobs.fetch(fetcher, CFG, "fixture-api-key") == []
     assert len(requests_seen) == 1
+
+
+def test_no_hardcoded_host_header() -> None:
+    # httpx derives Host from the URL; hardcoding it would follow a redirect
+    # to a different host while still claiming to be data.usajobs.gov.
+    assert "Host" not in usajobs._headers("key", "fixture@example.test")
+
+
+def test_redirects_are_not_followed(instant_fetcher) -> None:
+    def redirecting(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(302, headers={"Location": "https://elsewhere.test/x"})
+
+    with instant_fetcher(make_transport(redirecting)) as fetcher:
+        with pytest.raises(AdapterError, match="unexpected redirect"):
+            usajobs.fetch(fetcher, CFG, "fixture-api-key")
