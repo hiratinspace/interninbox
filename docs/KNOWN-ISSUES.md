@@ -6,8 +6,12 @@ here is a secret; it is all discoverable from the source. It is written down so
 users can set expectations, contributors can find good first issues, and nobody
 is surprised.
 
-> **Status 2026-08-11:** the issues below marked *Fixed* were resolved on the
-> known-issues-remediation branch; unmarked issues remain open.
+> **Status 2026-08-11:** most issues below are now *Fixed* — the High/Medium
+> findings on the `known-issues-remediation` branch, then M4, L3, L6, L7 and the
+> remaining M8 hardening on `close-remaining-known-issues`. What stays open is
+> inherent, not a deferred bug: heuristic completeness (M5), per-source POSTED
+> semantics (L5), location aliasing (M4's alias half), and the lock-free
+> simultaneous-write window (M8's residual). Each is marked and explained inline.
 
 Severity key:
 
@@ -152,8 +156,15 @@ exists`; there is no slug for USAJOBS. A rate-limited or WAF-blocked board (403
 / 429), plausible when scanning many companies, tells the user their (correct)
 slug is wrong. There is also no `Retry-After` handling on 429.
 
-### M4: Location filtering is naive substring matching
-`src/interninbox/filters.py:83-84`
+### M4: Location filtering is naive substring matching — Fixed (partial)
+`src/interninbox/filters.py` (`_location_contains`)
+
+**Fix:** location matching is now whole-word (`(?<!\w)term(?!\w)`,
+case-insensitive), so `locations = ["NY"]` no longer matches "Su**nny**vale"
+while ", NY" and "New York, NY" still match; a term ending in punctuation
+("D.C.") still anchors correctly. The **alias** half is inherent and stays
+open: location strings are per-ATS free text, so "New York" still will not
+match a board that writes "NYC" — list both forms. Documented in the README.
 
 Bare `in` on lowercased strings. Verified: `locations = ["NY"]` matches
 "Su**nny**vale, CA". Conversely "New York" will not match a board that writes
@@ -212,12 +223,17 @@ enabled no longer needs a dummy company (Task 11).
   Pathways listings must invent a dummy ATS entry.
 
 ### M8: `--new-only` cries wolf after a flaky scan or a filter change — Fixed (partial)
-`src/interninbox/cli.py:137-146`, `src/interninbox/state.py:29-31`
+`src/interninbox/cli.py`, `src/interninbox/state.py` (`save`, `_merge`)
 
 **Fix (partial):** `--new-only` now records everything *fetched* (not just
-matches), so a flaky run or a loosened filter no longer floods it with old
-posts (Task 9). Cross-process file locking for overlapping cron runs is still
-open.
+matches), so a flaky run or a loosened filter no longer floods it (Task 9).
+For overlapping cron runs, `save` now re-reads the file and **union-merges**
+before the atomic replace, and each run writes a **per-process** temp file, so
+one run no longer blindly clobbers another's additions or collides on a shared
+`.tmp`. The residual is inherent to a lock-free design: a genuinely
+simultaneous read→replace interleave can still lose a single addition. Closing
+that last window needs cross-platform file locking (`fcntl`/`msvcrt`), which
+carries its own stale-lock trade-offs — deliberately still open.
 
 Only *matched* listings are recorded in the state file. So:
 
@@ -321,13 +337,13 @@ Anticipated failures still traceback: a permission-denied config file
 (`KeyboardInterrupt`), `interninbox scan | head` (`BrokenPipeError`), and the
 `RecursionError` from M11.
 
-### L3: Table/markdown alignment breaks on wide characters and embedded control chars — Fixed (partial)
-`src/interninbox/output.py:30-31`
+### L3: Table/markdown alignment breaks on wide characters and embedded control chars — Fixed
+`src/interninbox/output.py` (`_truncate`, `_pad`, `_display_width`)
 
-**Fix (partial):** control characters (including embedded newlines) are now
-stripped from every field, so they can no longer break a table or markdown row
-(Task 1). East-Asian wide-character column alignment is deliberately deferred
-and still open.
+**Fix:** both halves. Control characters (including embedded newlines) are
+stripped from every field (Task 1), and truncation, padding, and column-width
+measurement now all count terminal cells via `unicodedata.east_asian_width`,
+so a CJK (double-width) field keeps every column aligned instead of overrunning.
 
 Truncation counts codepoints, so CJK titles misalign columns; a title containing
 a newline (nothing strips control characters; see H1) destroys both the table
@@ -344,8 +360,14 @@ Verified: `is_staff_role("Sr. Engineer")` is `False`; the trailing `\b` after
 never provides. Impact is small (the title must also carry an intern signal, and
 `senior|manager|…` catch most cases), but the pattern does not do what it says.
 
-### L5: POSTED column mixes meanings across ATSes
+### L5: POSTED column mixes meanings across ATSes — Documented (inherent)
 `src/interninbox/adapters/*` (date fields), `src/interninbox/output.py` (sort)
+
+**Status:** inherent to what each source publishes — each ATS exposes only its
+own date field, so there is no single true "posted" date to show. Rather than
+invent one, the per-source meaning is now disclosed in the README's state-file
+section (Task 13). Open only in the sense that the column cannot be made
+uniform without dropping the date entirely.
 
 Greenhouse `first_published` and Lever `createdAt` are stable, but Ashby
 `publishedAt` updates on unpublish/republish (a repost sorts to the top looking
@@ -353,15 +375,28 @@ new, while its stable UUID keeps `--new-only` from flagging it), and USAJOBS
 `PublicationStartDate` is the announcement open date. One column header, several
 meanings.
 
-### L6: State grows forever; USAJOBS identity is fragile; stored `url` is unused
-`src/interninbox/state.py:29-31`, `src/interninbox/models.py:22-24`
+### L6: State grows forever; USAJOBS identity is fragile; stored `url` is unused — Fixed
+`src/interninbox/state.py`, `src/interninbox/models.py`,
+`src/interninbox/adapters/usajobs.py`
+
+**Fix:** all three parts. (1) State entries now carry a last-seen date and
+anything not seen for a year is pruned on save, so the file no longer grows
+without bound. (2) `Listing` gained an `identity` override; USAJOBS keys on
+`usajobs:<control-number>` (stable) while still displaying the current agency
+name, so a rename no longer resurfaces listings. (3) The unused per-entry
+`url` is gone (state v2); v1 files still load and upgrade in place.
 
 State keys are never pruned. The key is `source:company:listing_id`; for USAJOBS
 `company` is the free-text organization name, so an agency rename resurfaces
 every existing listing as "new". The stored `url` value is never read back.
 
-### L7: Shared state path across configs in one directory
-`src/interninbox/cli.py` (default state path derives from the config directory)
+### L7: Shared state path across configs in one directory — Fixed
+`src/interninbox/state.py` (`default_state_path`), `src/interninbox/cli.py`
+
+**Fix:** the default state filename is derived from the config's stem — the
+default `interninbox.toml` keeps `.interninbox-state.json` (no break for
+existing users), while `work.toml` gets `.interninbox-state.work.json`. Two
+configs in one directory no longer share state; `--state` still overrides.
 
 Two different config files in the same directory silently share
 `.interninbox-state.json`, so `--new-only` under one config suppresses listings
@@ -412,8 +447,8 @@ User-Agent); the no-telemetry claim (the only writes are your config and state
 file); the exit-code table in the README; the USAJOBS "User-Agent is the
 registered email" contract, correctly scoped to that host; the Greenhouse
 boards API being genuinely unpaginated (562 live Stripe jobs in one response);
-and the 102-test offline suite. Fork pull requests run CI with a read-only token
-and no access to secrets.
+and the offline test suite (now 157 tests). Fork pull requests run CI with a
+read-only token and no access to secrets.
 
 ---
 
