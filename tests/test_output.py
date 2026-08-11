@@ -77,3 +77,45 @@ def test_markdown_output() -> None:
     assert lines[2].count("|") == 6
     assert "[apply](" in lines[2]
     assert lines[-1].startswith("3 internships")
+
+
+def test_table_strips_ansi_and_control_chars() -> None:
+    result = ScanResult(
+        listings=[
+            make_listing(
+                title="Intern\x1b]0;pwned\x07 \x1b[31mRed\x1b[0m",
+                company="acme\x9bevil",
+                locations=("New\nYork", "SF\rBay"),
+            )
+        ],
+        companies_scanned=1,
+    )
+    text = format_table(result)
+    assert "\x1b" not in text
+    assert "\x07" not in text
+    assert "\x9b" not in text
+    assert "\r" not in text
+    # A newline smuggled inside a location must not create an extra row.
+    assert len(text.splitlines()) == 4  # header, one row, blank, summary
+
+
+def test_markdown_strips_ansi_and_escapes_link_syntax() -> None:
+    result = ScanResult(
+        listings=[
+            make_listing(
+                title="\x1b[31m[click me](https://evil.test)",
+                company="ac|me",
+                url="https://boards.example.test/jobs/1)?tracking=(x",
+            )
+        ],
+        companies_scanned=1,
+    )
+    text = format_markdown(result)
+    assert "\x1b" not in text
+    # Title cannot forge a markdown link.
+    assert "[click me](https://evil.test)" not in text
+    # Company pipes are escaped like title pipes already are.
+    assert "ac\\|me" in text
+    # A ')' in the URL cannot terminate the [apply](...) link early.
+    row = text.splitlines()[2]
+    assert "[apply](https://boards.example.test/jobs/1%29?tracking=%28x)" in row
