@@ -11,3 +11,6 @@ uv.lock
 
 # interninbox scan state (per-user, never commit)
 .interninbox-state.json
+
+# macOS
+.DS_Store
