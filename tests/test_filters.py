@@ -33,7 +33,7 @@ def test_internship_signal_positives(title: str) -> None:
         "Internal Tools Engineer",
         "Operations Associate, Cooper",  # "coop" inside "Cooper"
         "Software Engineer",
-        "Interniship",  # typo — no boundary match
+        "Interniship",  # typo, no boundary match
     ],
 )
 def test_internship_signal_negatives(title: str) -> None:

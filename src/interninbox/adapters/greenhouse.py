@@ -6,7 +6,7 @@ Endpoint: https://boards-api.greenhouse.io/v1/boards/{slug}/jobs
 Field notes:
   - `id` is the stable per-posting identifier (it is the path segment in
     `absolute_url`); `requisition_id` is free text and sometimes blank.
-  - `location.name` is a single string — the one-element locations list.
+  - `location.name` is a single string, the one-element locations list.
   - `first_published` is an ISO-8601 timestamp.
 """
 

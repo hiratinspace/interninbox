@@ -27,7 +27,7 @@ US_STATES: dict[str, str] = {
 
 # Groups of equivalent spellings beyond the states table. Each group expands
 # to all of its members whenever any member is used as a filter term.
-# NOTE: no ("Los Angeles", "LA") group — "LA" is Louisiana's USPS code, and a
+# NOTE: no ("Los Angeles", "LA") group, "LA" is Louisiana's USPS code, and a
 # "Los Angeles" query must never surface "New Orleans, LA" boards. "NY"/"SF"
 # are safe (not English words, no state collision beyond their own).
 _ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
@@ -53,7 +53,7 @@ def _alias_map() -> dict[str, tuple[str, ...]]:
 
     Full state name -> the COMMA-ANCHORED abbreviation (", CA"): boards write
     "City, ST", and the anchor keeps codes that are English words (OR, IN, ME,
-    OK, HI) from matching prose like "Remote in USA or Canada" — matching is
+    OK, HI) from matching prose like "Remote in USA or Canada", matching is
     case-insensitive. Abbreviation -> the full name, plain (full names are
     unambiguous words).
     """
@@ -73,8 +73,8 @@ _ALIASES = _alias_map()
 def expand_location_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
     """Each term, followed by its known aliases; deduped case-insensitively.
 
-    English-word tokens (e.g. "US") are comma-anchored wherever they appear —
-    even a user-typed one — so no expansion can match the pronoun "us".
+    English-word tokens (e.g. "US") are comma-anchored wherever they appear
+    (even a user-typed one), so no expansion can match the pronoun "us".
     """
     out: list[str] = []
     seen: set[str] = set()

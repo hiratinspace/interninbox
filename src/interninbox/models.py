@@ -17,7 +17,7 @@ class Listing:
     url: str
     locations: tuple[str, ...] = ()
     posted_at: dt.datetime | None = None
-    # Overrides the derived state key when the default one would be unstable —
+    # Overrides the derived state key when the default one would be unstable,
     # e.g. USAJOBS, whose `company` is a mutable free-text agency name.
     identity: str | None = None
 
@@ -30,7 +30,7 @@ class Listing:
 class AdapterError(Exception):
     """A board fetch or parse failed for one company.
 
-    Callers report it as a one-line warning and keep scanning — one broken
+    Callers report it as a one-line warning and keep scanning; one broken
     board never aborts the whole run.
     """
 

@@ -1,6 +1,6 @@
-"""USAJOBS Search API adapter (optional — off unless configured).
+"""USAJOBS Search API adapter (optional, off unless configured).
 
-Endpoint: https://data.usajobs.gov/api/search — the official federal API.
+Endpoint: https://data.usajobs.gov/api/search, the official federal API.
 Unlike the ATS adapters this one requires a (free) API key, and its
 documented authentication contract is two headers plus the URL-derived
 Host: `User-Agent` set to the email address the key was registered under,
@@ -8,14 +8,14 @@ and `Authorization-Key`. That is why this adapter does NOT send this tool's
 normal User-Agent: the vendor's own contract for this API is that the UA
 *is* the registered email.
 
-Query: `HiringPath=student` — USAJOBS's hiring-path filter for the Pathways
-Internship Program (currently enrolled students) — plus any user-configured
+Query: `HiringPath=student`, USAJOBS's hiring-path filter for the Pathways
+Internship Program (currently enrolled students), plus any user-configured
 `Keyword`. Results are paginated (`ResultsPerPage` max 500) and capped at a
 conservative page limit; results still pass through the same local
 internship filter as every other source.
 
 Field notes (from the published response schema):
-  - `MatchedObjectId` is the announcement's Control Number — its stable
+  - `MatchedObjectId` is the announcement's Control Number, its stable
     identity and the key of its canonical URL;
   - `PositionURI` is the announcement page; `ApplyURI` is an array;
   - `PositionLocation[].LocationName` are the duty stations;
@@ -42,7 +42,7 @@ COMPANY_LABEL = "usajobs"
 
 def _headers(api_key: str, email: str) -> dict[str, str]:
     # The documented auth contract: the User-Agent IS the registered email.
-    # Host is NOT set by hand — httpx derives it from the URL, so a redirect
+    # Host is NOT set by hand, httpx derives it from the URL, so a redirect
     # can never carry a stale data.usajobs.gov Host header elsewhere.
     return {
         "User-Agent": email,
@@ -98,7 +98,7 @@ def fetch(
             keyword = params.get("Keyword", "")
             scope = f" for keyword {keyword!r}" if keyword else ""
             warn(
-                f"usajobs: results truncated{scope} — fetched {fetched} of {count_all}; "
+                f"usajobs: results truncated{scope}: fetched {fetched} of {count_all}; "
                 "add or narrow keywords to see everything"
             )
     return listings
@@ -160,7 +160,7 @@ def parse_item(item: object) -> Listing:
         url=position_uri,
         locations=tuple(locations),
         posted_at=posted_at,
-        # Key on the stable Control Number only — the org name displayed above
+        # Key on the stable Control Number only, the org name displayed above
         # can change (agency rename) without making this a "new" listing (L6).
         identity=f"{SOURCE}:{control_number}",
     )

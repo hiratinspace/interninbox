@@ -1,7 +1,7 @@
 """Load and validate `interninbox.toml`.
 
 Every validation failure raises `ConfigError` with a message a person can
-act on — the CLI prints it and exits non-zero, never a traceback.
+act on; the CLI prints it and exits non-zero, never a traceback.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def parse_company(entry: object) -> Company:
     if ats not in KNOWN_ATS:
         known = ", ".join(KNOWN_ATS)
         raise ConfigError(
-            f"unknown ATS {ats!r} in company entry {entry!r} — supported: {known}"
+            f"unknown ATS {ats!r} in company entry {entry!r}; supported: {known}"
         )
     return Company(ats=ats, slug=slug)
 
@@ -133,7 +133,7 @@ def _parse_usajobs(raw: object) -> UsaJobsConfig:
         raise ConfigError("usajobs.api_key_env must be a non-empty string")
     if enabled and not email.strip():
         raise ConfigError(
-            "usajobs.enabled is true but usajobs.email is not set — USAJOBS requires "
+            "usajobs.enabled is true but usajobs.email is not set. USAJOBS requires "
             "the email address your API key is registered under (it becomes the "
             "User-Agent header, per their documented contract)"
         )
@@ -155,7 +155,7 @@ def load_config(path: Path) -> Config:
     """Read and validate the config file at `path`."""
     if not path.is_file():
         raise ConfigError(
-            f"no config file at {path} — run `interninbox init` to create a starter "
+            f"no config file at {path}; run `interninbox init` to create a starter "
             f"{DEFAULT_CONFIG_NAME}, or pass --config PATH"
         )
     try:
@@ -189,7 +189,7 @@ def load_config(path: Path) -> Config:
 
     if not companies and not usajobs_cfg.enabled and registry == "none":
         raise ConfigError(
-            f"{path} configures nothing to scan — add a `companies` list "
+            f"{path} configures nothing to scan; add a `companies` list "
             "(e.g. companies = [\"greenhouse:stripe\"]), set registry = \"top\", "
             "or enable [usajobs]"
         )
@@ -204,7 +204,7 @@ def load_config(path: Path) -> Config:
 
 
 STARTER_CONFIG = """\
-# interninbox configuration — edit this, then run `interninbox scan`.
+# interninbox configuration. Edit this, then run `interninbox scan`.
 
 # Target companies as "ats:slug". Find a company's ATS and slug from its
 # careers page URL:
@@ -220,7 +220,7 @@ companies = [
 
 # Also sweep the bundled curated registry: "none" (default), "top" (~50
 # well-known boards), "all", "large", or "startups". `interninbox companies`
-# lists what's in it. Big sweeps take a couple of minutes — politeness.
+# lists what's in it. Big sweeps take a couple of minutes, by polite design.
 # registry = "none"
 
 [filters]
@@ -230,10 +230,10 @@ include_keywords = []
 # Drop any listing whose title contains one of these (case-insensitive).
 exclude_keywords = []
 # Require at least one of these words in the title, on top of the internship
-# signal — "internship AND security". Whole-word, case-insensitive. This
+# signal, i.e. "internship AND security". Whole-word, case-insensitive. This
 # NARROWS results; include_keywords above BROADENS them.
 match_keywords = []
-# Named role presets that narrow to a field — `interninbox roles` lists them.
+# Named role presets that narrow to a field. `interninbox roles` lists them.
 # Example: roles = ["cybersecurity"]  keeps only security internships.
 roles = []
 # Keep only listings whose location contains one of these as a whole word
@@ -246,8 +246,8 @@ locations = []
 remote_ok = true
 
 # Optional: federal internships from USAJOBS (Pathways program).
-# Requires a free API key from https://developer.usajobs.gov/apirequest/ —
-# the email below MUST be the one the key is registered under.
+# Requires a free API key from https://developer.usajobs.gov/apirequest/.
+# The email below MUST be the one the key is registered under.
 # [usajobs]
 # enabled = true
 # email = "you@example.com"

@@ -2,7 +2,7 @@
 
 Run manually when authoring or updating the registry (never from tests):
     .venv/bin/python scripts/verify_registry.py
-Sequential, ~0.6 s between requests, honest User-Agent — the same manners the
+Sequential, ~0.6 s between requests, honest User-Agent, the same manners the
 tool itself has. Prints PASS/FAIL per entry and exits non-zero on any FAIL.
 """
 

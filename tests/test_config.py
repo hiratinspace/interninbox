@@ -168,5 +168,5 @@ def test_registry_key_parsed_and_validated(tmp_path: Path) -> None:
 def test_registry_alone_is_something_to_scan(tmp_path: Path) -> None:
     path = tmp_path / "interninbox.toml"
     path.write_text('registry = "top"\n', encoding="utf-8")
-    config = load_config(path)  # no companies, no usajobs — registry suffices
+    config = load_config(path)  # no companies, no usajobs, registry suffices
     assert config.companies == () and config.registry == "top"

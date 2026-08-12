@@ -14,5 +14,5 @@ build/
 # macOS
 .DS_Store
 
-# Internal planning docs / specs — not published
+# Internal planning docs / specs, not published
 docs/

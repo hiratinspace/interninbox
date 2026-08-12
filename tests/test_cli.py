@@ -148,7 +148,7 @@ def test_state_updates_even_without_new_only_flag(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
-    # Plain scan first (no flag) — it must still record what was seen.
+    # Plain scan first (no flag), it must still record what was seen.
     assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
     capsys.readouterr()
     # A --new-only scan right after shows nothing new.

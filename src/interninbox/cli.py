@@ -136,7 +136,7 @@ def _cmd_init(args: argparse.Namespace, **_: object) -> int:
 
     target = Path.cwd() / DEFAULT_CONFIG_NAME
     if target.exists():
-        print(f"error: {target} already exists — not overwriting it", file=sys.stderr)
+        print(f"error: {target} already exists, not overwriting it", file=sys.stderr)
         return 1
     try:
         target.write_text(STARTER_CONFIG, encoding="utf-8")
@@ -145,7 +145,7 @@ def _cmd_init(args: argparse.Namespace, **_: object) -> int:
         return 1
     print(f"Wrote {target}")
     print("Next steps:")
-    print(f"  1. Edit {DEFAULT_CONFIG_NAME} — add your target companies")
+    print(f"  1. Edit {DEFAULT_CONFIG_NAME} to add your target companies")
     print("     (`interninbox companies` prints a starter list)")
     print("  2. Run `interninbox scan`")
     return 0
@@ -212,8 +212,8 @@ def _cmd_scan(
         )
         # Rebase on the existing config (or an empty one) so an --interactive
         # run only overrides what the wizard actually asked about: locations,
-        # roles, and the registry tier. Everything else the user configured —
-        # exclude_keywords, match_keywords, remote_ok, [usajobs] — survives.
+        # roles, and the registry tier. Everything else the user configured
+        # (exclude_keywords, match_keywords, remote_ok, [usajobs]) survives.
         base = existing if existing is not None else Config(companies=())
         config = dataclasses.replace(
             base,
@@ -232,7 +232,7 @@ def _cmd_scan(
     companies = _effective_companies(config)
     if len(companies) >= 20:
         print(
-            f"scanning {len(companies)} boards — roughly "
+            f"scanning {len(companies)} boards, roughly "
             f"{registry_mod.estimate_label(len(companies))} at polite pacing",
             file=sys.stderr,
         )
@@ -248,7 +248,7 @@ def _cmd_scan(
     matched = [listing for listing in result.listings if matches(listing, filters)]
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
-    # Record EVERYTHING fetched — flag or not — so "new" means "never fetched
+    # Record EVERYTHING fetched, flag or not, so "new" means "never fetched
     # before": loosening a filter later cannot flood --new-only with old posts.
     state.record(result.listings)
     result.listings = shown
@@ -274,12 +274,12 @@ def _cmd_scan(
         reply = ask(f"Save these choices to {args.config}? [y/N] ").strip().lower()
         if reply in ("y", "yes"):
             args.config.write_text(wizard.render_config(answers), encoding="utf-8")
-            print(f"Wrote {args.config} — next time, plain `interninbox scan` "
+            print(f"Wrote {args.config}. Next time, plain `interninbox scan` "
                   "uses it.", file=sys.stderr)
 
     attempted = result.companies_scanned + result.companies_failed
     if attempted and result.companies_scanned == 0:
-        print("error: every configured company failed — is the network down?", file=sys.stderr)
+        print("error: every configured company failed; is the network down?", file=sys.stderr)
         return 1
     return 0
 
@@ -316,7 +316,7 @@ def _scan_usajobs(
     api_key = env.get(cfg.api_key_env, "").strip()
     if not api_key:
         result.notes.append(
-            f"usajobs: enabled but {cfg.api_key_env} is not set — skipping "
+            f"usajobs: enabled but {cfg.api_key_env} is not set, skipping "
             "(get a free key at https://developer.usajobs.gov/apirequest/)"
         )
         return
