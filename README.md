@@ -101,6 +101,12 @@ your last scan.
 | `--new-only` | Show only listings not seen by a previous scan |
 | `--state PATH` | Use a state file other than the one derived from the config name |
 | `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them: a one-shot override of `locations`, `roles`, and `registry` that leaves everything else untouched |
+| `--quiet`, `-q` | Suppress the banner and per-company progress lines |
+
+An interactive scan prints a one-line banner and per-company progress to
+`stderr` (never to `stdout`), so piped `--json` / `--markdown` output stays
+clean. Both are shown only on a real terminal, honor `NO_COLOR`, and vanish
+under pipes, redirects, and cron. Pass `--quiet` to silence them anywhere.
 
 Exit codes: `0` on success (a single company that fails prints a one-line
 warning and never aborts the scan); `1` when the config is invalid or every
