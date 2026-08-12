@@ -1,4 +1,4 @@
-"""Polite HTTP fetching — the politeness is baked in, not optional.
+"""Polite HTTP fetching, the politeness is baked in, not optional.
 
 Rules, enforced centrally so no adapter can forget them:
   - sequential requests, with at least `MIN_HOST_DELAY` seconds between any
@@ -30,18 +30,18 @@ READ_DEADLINE_SECONDS = 60.0  # total body-download budget, not per-socket-read
 def _client_error(status: int, host: str) -> str:
     if status in (401, 403):
         return (
-            f"HTTP {status} from {host}: request refused — an API-key problem, or the "
-            "host is blocking automated requests (not a slug problem)"
+            f"HTTP {status} from {host}: request refused (an API-key problem, or the "
+            "host is blocking automated requests, not a slug problem)"
         )
     if status == 429:
-        return f"HTTP 429 from {host}: rate limited — wait a while before rescanning"
+        return f"HTTP 429 from {host}: rate limited, wait a while before rescanning"
     if status in (404, 410):
-        return f"HTTP {status} from {host}: board not found — check the slug exists"
+        return f"HTTP {status} from {host}: board not found, check the slug exists"
     return f"HTTP {status} from {host}"
 
 
 def _retry_after_seconds(header_value: str | None) -> float:
-    """Seconds to wait before the single 429 retry — header value capped at 10 s."""
+    """Seconds to wait before the single 429 retry, header value capped at 10 s."""
     try:
         seconds = float(header_value) if header_value is not None else 2.0
     except ValueError:
@@ -123,7 +123,7 @@ class Fetcher:
                 ) as response:
                     if response.status_code >= 500:
                         last_error = f"server error HTTP {response.status_code}"
-                        continue  # transient — retry once
+                        continue  # transient, retry once
                     if response.status_code == 429 and _attempt == 1:
                         self._sleep(_retry_after_seconds(response.headers.get("Retry-After")))
                         last_error = f"HTTP 429 from {host} (rate limited)"
@@ -137,7 +137,7 @@ class Fetcher:
                     body = self._read_limited(response, host)
             except httpx.HTTPError as exc:
                 last_error = f"network error: {exc}"
-                continue  # transient — retry once
+                continue  # transient, retry once
             return _parse_json(body, host)
         raise AdapterError(f"{last_error} (after retry)")
 
@@ -149,10 +149,10 @@ class Fetcher:
             total += len(chunk)
             if total > self._max_response_bytes:
                 raise AdapterError(
-                    f"response from {host} is larger than {self._max_response_bytes} bytes "
-                    "— refusing it"
+                    f"response from {host} is larger than {self._max_response_bytes} bytes, "
+                    "refusing it"
                 )
             if self._clock() - started > READ_DEADLINE_SECONDS:
-                raise AdapterError(f"response from {host} is downloading too slowly — gave up")
+                raise AdapterError(f"response from {host} is downloading too slowly, gave up")
             chunks.append(chunk)
         return b"".join(chunks)

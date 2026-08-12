@@ -1,4 +1,4 @@
-"""Registry shape, tiers, and estimates — data-integrity tests, all offline."""
+"""Registry shape, tiers, and estimates, data-integrity tests, all offline."""
 
 import pytest
 

@@ -48,7 +48,7 @@ def test_fetch_paginates_until_count_all_and_dedupes(instant_fetcher) -> None:
         listings = usajobs.fetch(fetcher, CFG, "fixture-api-key")
     # Two pages requested (page1 says CountAll=3, page1 carries 2 items).
     assert [request.url.params["Page"] for request in requests_seen] == ["1", "2"]
-    # 800000002 appears on both pages — deduped on the control number.
+    # 800000002 appears on both pages, deduped on the control number.
     assert [listing.listing_id for listing in listings] == [
         "800000001",
         "800000002",

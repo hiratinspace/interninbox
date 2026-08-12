@@ -1,4 +1,4 @@
-"""ATS adapters — one module per documented public job-board API."""
+"""ATS adapters, one module per documented public job-board API."""
 
 from __future__ import annotations
 

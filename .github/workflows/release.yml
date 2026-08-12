@@ -1,4 +1,4 @@
-# Publishes to PyPI via Trusted Publishing (OIDC) — no tokens stored anywhere.
+# Publishes to PyPI via Trusted Publishing (OIDC), no tokens stored anywhere.
 # Trigger: publishing a GitHub Release (tag vX.Y.Z).
 # PyPI side: the project must list this repo + workflow as a trusted publisher for the `interninbox` project
 # (workflow file: release.yml, environment: pypi).

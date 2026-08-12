@@ -1,4 +1,4 @@
-"""`interninbox companies` — the curated registry, human-readable."""
+"""`interninbox companies`, the curated registry, human-readable."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def render() -> str:
         lines.append(f"  {label}  # {entry.name}  [{entry.size}]  {tags}")
     lines.append("")
     lines.append(
-        f"{len(REGISTRY)} companies, verified when authored — companies migrate ATSes, "
+        f"{len(REGISTRY)} companies, verified when authored. Companies migrate ATSes, "
         "so verify a slug with a scan; a wrong one just prints a warning."
     )
     return "\n".join(lines)

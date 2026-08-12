@@ -34,7 +34,7 @@ def test_empty_input_is_empty() -> None:
     assert expand_location_terms(()) == ()
 
 
-# Behavioral contracts through the real matcher — these are the tests that
+# Behavioral contracts through the real matcher, these are the tests that
 # would catch an unsafe expansion, so do not weaken them.
 
 def test_full_state_name_matches_abbreviated_board_location() -> None:
@@ -62,7 +62,7 @@ def test_indiana_does_not_match_the_word_in() -> None:
 
 def test_country_alias_us_never_matches_the_pronoun() -> None:
     # "United States"/"USA"/"US" must not inject a bare "US" that whole-word
-    # matches the pronoun "us" — same English-word hazard as the state codes.
+    # matches the pronoun "us", same English-word hazard as the state codes.
     for term in ("United States", "USA", "US"):
         filters = Filters(locations=expand_location_terms((term,)))
         assert not matches(make_listing(locations=("Come build with us",)), filters), term

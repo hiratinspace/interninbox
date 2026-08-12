@@ -1,4 +1,4 @@
-"""Shared test helpers — all tests are offline (httpx.MockTransport only)."""
+"""Shared test helpers, all tests are offline (httpx.MockTransport only)."""
 
 from __future__ import annotations
 

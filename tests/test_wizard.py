@@ -1,4 +1,4 @@
-"""Wizard flow with scripted answers — no TTY, no network."""
+"""Wizard flow with scripted answers, no TTY, no network."""
 
 from interninbox import wizard
 from interninbox.config import Filters

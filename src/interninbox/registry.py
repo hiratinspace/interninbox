@@ -1,7 +1,7 @@
 """The curated company registry behind `--all` / the wizard's company menu.
 
 Every entry was verified against its live public board API when authored
-(scripts/verify_registry.py) — slugs rot as companies migrate ATSes, so
+(scripts/verify_registry.py), slugs rot as companies migrate ATSes, so
 re-verify when touching this file. A dead slug degrades gracefully at scan
 time (one warning line), but shipping known-dead entries is not acceptable.
 """
@@ -37,7 +37,7 @@ def select(tier: str) -> tuple[RegistryCompany, ...]:
     if tier == "startups":
         return tuple(entry for entry in REGISTRY if entry.size == "startup")
     valid = ", ".join(TIERS)
-    raise ValueError(f"unknown registry tier {tier!r} — valid tiers: {valid}")
+    raise ValueError(f"unknown registry tier {tier!r}; valid tiers: {valid}")
 
 
 def estimate_label(count: int) -> str:

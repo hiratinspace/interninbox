@@ -19,7 +19,7 @@ uv run ruff check .
 - New job sources must use a documented public API and keep the built-in
   politeness (per-host delay, honest User-Agent, single retry).
 - Keep ruff clean (`line-length = 100`) and type hints on public functions.
-- Every user-facing failure needs a clear message and a non-zero exit — no
+- Every user-facing failure needs a clear message and a non-zero exit, with no
   tracebacks for anticipated errors.
 
-Support is best-effort by community volunteers — please be patient with reviews.
+Support is best-effort by community volunteers, so please be patient with reviews.

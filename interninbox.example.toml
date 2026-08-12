@@ -27,8 +27,8 @@ locations = []
 remote_ok = true
 
 # Optional: federal internships from USAJOBS (Pathways program).
-# Requires a free API key from https://developer.usajobs.gov/apirequest/ —
-# the email below MUST be the one the key is registered under.
+# Requires a free API key from https://developer.usajobs.gov/apirequest/.
+# The email below MUST be the one the key is registered under.
 # [usajobs]
 # enabled = true
 # email = "you@example.com"

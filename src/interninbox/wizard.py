@@ -1,7 +1,7 @@
 """The first-run interactive wizard: location -> roles -> companies -> scan.
 
 Pure question/answer logic with injectable input/print so tests script it.
-It never touches the network or the filesystem itself — `cli.py` turns the
+It never touches the network or the filesystem itself, `cli.py` turns the
 answers into an in-memory Config (same expansion path as a file config) and
 handles the optional save.
 """
@@ -28,9 +28,9 @@ def run(
     print_fn: Callable[[str], None],
     config_companies: int,
 ) -> WizardAnswers:
-    print_fn("interninbox — a few questions, then the scan. Blank = no preference.")
+    print_fn("interninbox: a few questions, then the scan. Blank = no preference.")
 
-    raw = input_fn("Location (country, US state, or city — blank = anywhere): ").strip()
+    raw = input_fn("Location (country, US state, or city; blank = anywhere): ").strip()
     locations = (raw,) if raw else ()
 
     names = sorted(ROLE_PRESETS)
@@ -44,7 +44,7 @@ def run(
         options.append(("config", f"my config ({config_companies} boards)"))
     for tier in ("all", "top", "large", "startups"):
         count = len(select(tier))
-        options.append((tier, f"{tier:<8} — {count} boards, {estimate_label(count)}"))
+        options.append((tier, f"{tier:<8}  {count} boards, {estimate_label(count)}"))
     print_fn("Companies:")
     start = 0 if config_companies else 1
     for index, (_, line) in enumerate(options, start=start):
@@ -85,7 +85,7 @@ def render_config(answers: WizardAnswers) -> str:
 
     tier = answers.tier if answers.tier in TIERS else "none"
     return (
-        "# Written by the interninbox wizard — edit freely; `interninbox scan`\n"
+        "# Written by the interninbox wizard. Edit freely; `interninbox scan`\n"
         "# uses it from now on (rerun the wizard any time with --interactive).\n"
         "companies = []\n"
         f'registry = "{tier}"\n'

@@ -1,4 +1,4 @@
-"""Named role presets — curated whole-word keyword sets for match_keywords.
+"""Named role presets, curated whole-word keyword sets for match_keywords.
 
 Each preset narrows results to "internship AND (any of these words)" via the
 existing match_keywords machinery. Keywords are whole-word matched, so they
@@ -65,7 +65,7 @@ def expand_roles(names: tuple[str, ...]) -> tuple[str, ...]:
         key = name.strip().lower()
         if key not in ROLE_PRESETS:
             valid = ", ".join(sorted(ROLE_PRESETS))
-            raise ValueError(f"unknown role {name!r} — valid roles: {valid}")
+            raise ValueError(f"unknown role {name!r}; valid roles: {valid}")
         for keyword in ROLE_PRESETS[key]:
             if keyword not in seen:
                 seen.add(keyword)

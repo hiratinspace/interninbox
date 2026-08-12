@@ -1,8 +1,8 @@
-"""Local heuristic matching — no LLM, just word-boundary regexes.
+"""Local heuristic matching, no LLM, just word-boundary regexes.
 
 Two-stage title filter:
   1. internship signal (built-in patterns OR the user's include_keywords);
-  2. staff-role exclusion — recruiters, managers, and "Intern Program
+  2. staff-role exclusion, recruiters, managers, and "Intern Program
      Manager"-style roles about internships are dropped.
 
 Word boundaries matter: a naive substring match on "intern" catches
@@ -34,7 +34,7 @@ _SIGNAL_PATTERNS: tuple[str, ...] = (
     r"\bworking\s+student\b",
     # US-federal Pathways titling: "Student Trainee (Information Technology)".
     # Bare "Pathways" would also catch "Pathways Recent Graduates", a
-    # post-degree full-time program — so require the intern word.
+    # post-degree full-time program, so require the intern word.
     r"\bstudent\s+trainee\b",
     r"\bpathways\s+intern(ship)?s?\b",
     # Program titles that don't say "intern": "... - Summer 2027",
@@ -52,7 +52,7 @@ _SIGNAL_PATTERNS: tuple[str, ...] = (
 INTERNSHIP_SIGNAL = re.compile("|".join(_SIGNAL_PATTERNS), re.IGNORECASE)
 
 # Roles *about* interns rather than *for* interns, plus unambiguous
-# seniority markers — an intern posting is never "Senior" or "Staff".
+# seniority markers, an intern posting is never "Senior" or "Staff".
 STAFF_ROLE = re.compile(
     r"\b(manager|director|coordinator|recruiter|recruiting|head of|team lead|supervisor"
     r"|professor|instructor|senior|staff|principal)\b|\bsr\b",
@@ -104,7 +104,7 @@ def _passes_locations(listing: Listing, filters: Filters) -> bool:
     if not filters.locations:
         return True
     if not locations:
-        # No stated location and the user asked for specific ones — drop.
+        # No stated location and the user asked for specific ones, drop.
         return False
     return any(
         _location_contains(location, want)

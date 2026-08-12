@@ -1,7 +1,7 @@
 """The seen-listings state file behind `--new-only`.
 
 Lives next to the config (see `default_state_path`; override with `--state
-PATH`). Every scan updates it — flag or not — so "new" always means "since
+PATH`). Every scan updates it, flag or not, so "new" always means "since
 the last scan". A corrupt or missing file means everything is new: warn once,
 never crash.
 
@@ -18,7 +18,7 @@ Two robustness properties matter for unattended (cron) use:
   - saves union-merge with whatever is on disk at save time, so an overlapping
     run's additions are re-read and preserved rather than blindly clobbered.
     This is best-effort, not a lock: a genuinely simultaneous read/replace
-    interleave can still lose one addition (full safety needs file locking —
+    interleave can still lose one addition (full safety needs file locking ,
     see KNOWN-ISSUES M8).
 """
 
@@ -133,7 +133,7 @@ def _coerce_seen(raw: object) -> _Seen:
             cleaned[str(key)] = value
         elif isinstance(value, dict):  # v1: {"url": ...}; date unknown
             cleaned[str(key)] = None
-        # anything else is a malformed entry — skip it
+        # anything else is a malformed entry, skip it
     return cleaned
 
 
@@ -147,7 +147,7 @@ def _read_seen(path: Path) -> _Seen:
 
 
 def load_state(path: Path) -> State:
-    """Load the state file, degrading gracefully — see module docstring."""
+    """Load the state file, degrading gracefully, see module docstring."""
     if not path.exists():
         return State({})
     try:
@@ -157,7 +157,7 @@ def load_state(path: Path) -> State:
         return State(
             {},
             warning=(
-                f"state file {path} could not be read ({exc}) — treating every "
+                f"state file {path} could not be read ({exc}); treating every "
                 "listing as new and rewriting it after this scan"
             ),
         )

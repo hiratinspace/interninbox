@@ -99,13 +99,13 @@ def format_table(result: ScanResult) -> str:
         lines = ["No matching internships found."]
         if result.listings_matched:
             lines.append(
-                f"({result.listings_matched} matched but were already seen — "
+                f"({result.listings_matched} matched but were already seen; "
                 "nothing new since the last scan)"
             )
         elif result.listings_checked:
             lines.append(
-                f"({result.listings_checked} listings checked; none matched your filters "
-                "— internships may be off-season, or try loosening [filters])"
+                f"({result.listings_checked} listings checked; none matched your filters. "
+                "Internships may be off-season, or try loosening [filters])"
             )
         elif result.companies_scanned:
             lines.append("(the boards responded but list no jobs at all right now)")
