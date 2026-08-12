@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/hiratinspace/interninbox/main/assets/logo.png?v=2" alt="interninbox" width="420">
+<img src="https://raw.githubusercontent.com/hiratinspace/interninbox/main/assets/logo.png?v=3" alt="interninbox" width="420">
 
 <h3>Find internships from your terminal. Zero API keys, nothing leaves your machine.</h3>
 
