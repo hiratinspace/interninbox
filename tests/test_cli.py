@@ -1,6 +1,7 @@
 """End-to-end CLI tests through main() with an injected MockTransport."""
 
 import json
+import sys
 from pathlib import Path
 
 import httpx
@@ -10,6 +11,13 @@ from conftest import json_response, load_fixture, make_transport
 from interninbox.cli import main
 
 NO_SLEEP = {"sleep": lambda _: None, "env": {}}
+
+_BANNER_TAGLINE = "find internships. in the terminal."
+
+
+def _force_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pretend stderr is an interactive terminal for banner/progress tests."""
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True)
 
 
 def route(request: httpx.Request) -> httpx.Response:
@@ -308,6 +316,80 @@ def test_init_config_is_loadable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert main(["init"], **NO_SLEEP) == 0
     config = load_config(tmp_path / "interninbox.toml")
     assert len(config.companies) == 3
+
+
+def test_banner_shown_on_interactive_scan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)
+    config = write_config(tmp_path, THREE_BOARDS)
+    code = main(
+        ["scan", "--config", str(config)],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},  # no NO_COLOR
+    )
+    err = capsys.readouterr().err
+    assert code == 0
+    assert _BANNER_TAGLINE in err
+    assert "\x1b[" in err  # colored on a tty without NO_COLOR
+
+
+def test_banner_respects_no_color(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)
+    config = write_config(tmp_path, THREE_BOARDS)
+    main(
+        ["scan", "--config", str(config)],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={"NO_COLOR": "1"},
+    )
+    err = capsys.readouterr().err
+    banner_line = next(line for line in err.splitlines() if _BANNER_TAGLINE in line)
+    assert "\x1b" not in banner_line  # plain when NO_COLOR is set
+
+
+def test_no_banner_when_not_a_tty(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # capsys stderr is not a tty, so a piped/redirected run stays clean.
+    config = write_config(tmp_path, THREE_BOARDS)
+    main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP)
+    assert _BANNER_TAGLINE not in capsys.readouterr().err
+
+
+def test_quiet_suppresses_banner_and_progress(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)
+    config = write_config(tmp_path, THREE_BOARDS)
+    main(
+        ["scan", "--config", str(config), "--quiet"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+    )
+    err = capsys.readouterr().err
+    assert _BANNER_TAGLINE not in err
+    assert "[1/3]" not in err  # --quiet also silences the progress lines
+
+
+def test_json_scan_has_no_banner(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)
+    config = write_config(tmp_path, THREE_BOARDS)
+    main(
+        ["scan", "--config", str(config), "--json"],
+        transport=make_transport(route),
+        sleep=lambda _: None,
+        env={},
+    )
+    captured = capsys.readouterr()
+    assert _BANNER_TAGLINE not in captured.err  # machine output stays clean
+    json.loads(captured.out)  # stdout is still valid JSON
 
 
 def test_companies_lists_starter_entries(capsys: pytest.CaptureFixture[str]) -> None:

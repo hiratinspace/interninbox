@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from interninbox import __version__, wizard
+from interninbox import __version__, banner, wizard
 from interninbox import companies as companies_mod
 from interninbox import registry as registry_mod
 from interninbox.adapters import ADAPTERS, usajobs
@@ -93,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask location/role/companies questions before scanning "
         "(automatic on a terminal when no config exists)",
+    )
+    scan_parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="suppress the banner and per-company progress lines",
     )
     scan_parser.set_defaults(func=_cmd_scan)
 
@@ -198,6 +204,11 @@ def _cmd_scan(
     env: Mapping[str, str],
     input_fn: Callable[[str], str] | None,
 ) -> int:
+    # Brand banner: interactive terminals only, never on machine output, and
+    # only to stderr so it can never corrupt piped --json / --markdown.
+    if sys.stderr.isatty() and not (args.quiet or args.json or args.markdown):
+        print(banner.render_banner(color=not env.get("NO_COLOR")), file=sys.stderr)
+
     wizard_wants = args.interactive or (
         not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
     )
@@ -237,7 +248,7 @@ def _cmd_scan(
             file=sys.stderr,
         )
 
-    progress = sys.stderr.isatty()
+    progress = sys.stderr.isatty() and not args.quiet
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
         _scan_boards(companies, fetcher, result, progress=progress)
