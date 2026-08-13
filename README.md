@@ -53,6 +53,21 @@ Requires **Python 3.11+**. Installing straight from git works too
 (`pipx install git+https://github.com/hiratinspace/interninbox`), or run from a
 checkout with `uv sync && uv run interninbox --help`.
 
+### Updating
+
+Already have an older version? Update it the same way you installed it:
+
+```sh
+pipx upgrade interninbox            # if you used pipx
+uv tool upgrade interninbox         # if you used uv
+pip install --upgrade interninbox   # if you used pip
+```
+
+Then check with `interninbox --version`. Upgrades are safe: your
+`interninbox.toml` keeps working and the state file migrates itself. If an
+upgrade insists you are already current but the version looks old, force it
+with the installer's `--force` (pipx / uv tool) or `--force-reinstall` (pip).
+
 ## Quickstart
 
 Install, then just run:
