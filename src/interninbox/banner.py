@@ -1,54 +1,55 @@
-"""The little terminal-window banner shown at the top of an interactive scan.
+"""The ASCII-wordmark banner shown at the top of an interactive scan.
 
-Rendered as a framed pane that looks like the logo's terminal: window dots,
-the two-tone wordmark as the title, and the tagline typed at a prompt with a
-block cursor. Kept pure so it is easy to test; the CLI decides *whether* to
-show it (a real terminal, not piped, `NO_COLOR` honored) and this module only
-decides *how* it looks.
+A big two-tone "interninbox" (figlet "slant"), split so "intern" and "inbox"
+carry the logo's white/blue, with the tagline typed at a prompt below. Kept
+pure so it is easy to test; the CLI decides *whether* to show it (a real
+terminal, not piped, `NO_COLOR` honored) and this module only decides *how* it
+looks.
 
-Every glyph is box-drawing, the full block, or ASCII, so it encodes on a
-legacy Windows console (cp437) and never turns to mojibake. Color is optional
-and, when on, every line resets its own styling so nothing leaks past the box.
+The art is pure ASCII, so the whole banner encodes on a legacy Windows console
+and never mojibakes. The accent is a 256-color blue index rather than a 16-color
+slot, so a theme that remaps "bright blue" to purple cannot recolor it. Color
+is optional and every styled line resets, so nothing leaks past the wordmark.
 """
 
 from __future__ import annotations
 
+_INTERN = (
+    "    _       __",
+    "   (_)___  / /____  _________",
+    "  / / __ \\/ __/ _ \\/ ___/ __ \\",
+    " / / / / / /_/  __/ /  / / / /",
+    "/_/_/ /_/\\__/\\___/_/  /_/ /_/",
+)
+_INBOX = (
+    "    _       __",
+    "   (_)___  / /_  ____  _  __",
+    "  / / __ \\/ __ \\/ __ \\| |/_/",
+    " / / / / / /_/ / /_/ />  <",
+    "/_/_/ /_/_.___/\\____/_/|_|",
+)
+_INTERN_WIDTH = max(len(row) for row in _INTERN)
+_GAP = 2
 _TAGLINE = "find internships. in the terminal."
-_CURSOR = "█"  # full block; cp437 0xDB
 
-_RED = "\x1b[31m"
-_YELLOW = "\x1b[33m"
-_GREEN = "\x1b[32m"
-_BLUE = "\x1b[94m"
+_BLUE = "\x1b[38;5;33m"
 _BOLD = "\x1b[1m"
 _DIM = "\x1b[2m"
 _RESET = "\x1b[0m"
 
 
 def render_banner(*, color: bool) -> str:
-    """A four-line boxed banner, styled with ANSI when `color` is true."""
-    # Each content row as (visible text, styled text). Widths are measured on
-    # the visible text so the box stays aligned regardless of escape codes.
-    title = (
-        "o o o   interninbox",
-        f"{_RED}o{_RESET} {_YELLOW}o{_RESET} {_GREEN}o{_RESET}   "
-        f"{_BOLD}intern{_BLUE}inbox{_RESET}",
-    )
-    prompt = (
-        f"> {_TAGLINE} {_CURSOR}",
-        f"{_BLUE}>{_RESET} {_DIM}{_TAGLINE}{_RESET} {_BLUE}{_CURSOR}{_RESET}",
-    )
-    rows = [title, prompt]
-    inner = max(len(plain) for plain, _ in rows)
-
-    edge = _DIM if color else ""
-    reset = _RESET if color else ""
-    top = f"{edge}┌{'─' * (inner + 2)}┐{reset}"
-    bottom = f"{edge}└{'─' * (inner + 2)}┘{reset}"
-
-    lines = [top]
-    for plain, styled in rows:
-        body = (styled if color else plain) + " " * (inner - len(plain))
-        lines.append(f"{edge}│{reset} {body} {edge}│{reset}")
-    lines.append(bottom)
+    """The multi-line banner, styled with ANSI when `color` is true."""
+    lines: list[str] = []
+    for intern_row, inbox_row in zip(_INTERN, _INBOX, strict=True):
+        left = intern_row.ljust(_INTERN_WIDTH + _GAP)
+        if color:
+            lines.append(f"{_BOLD}{left}{_BLUE}{inbox_row}{_RESET}")
+        else:
+            lines.append(f"{left}{inbox_row}")
+    lines.append("")
+    if color:
+        lines.append(f"  {_BLUE}>{_RESET} {_DIM}{_TAGLINE}{_RESET}")
+    else:
+        lines.append(f"  > {_TAGLINE}")
     return "\n".join(lines)
