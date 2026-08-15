@@ -69,3 +69,10 @@ def test_boolean_created_at_is_not_a_date() -> None:
         "createdAt": True,  # bool is an int subclass; must not become 1970-01-01
     }
     assert lever.parse([posting], "x")[0].posted_at is None
+
+
+def test_description_plain_is_classified() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    by_title = {listing.title: listing for listing in listings}
+    assert by_title["Cartography Engineering Intern"].sponsorship == "citizenship-required"
+    assert by_title["Geospatial Data Intern"].sponsorship is None  # no description, unknown

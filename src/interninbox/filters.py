@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from interninbox import eligibility
 from interninbox.config import Filters
 from interninbox.models import Listing
 
@@ -127,15 +128,42 @@ def _location_contains(location: str, want: str) -> bool:
     return re.search(f"{prefix}{re.escape(want)}{suffix}", location, re.IGNORECASE) is not None
 
 
+def _passes_eligibility(listing: Listing, filters: Filters) -> bool:
+    """Sponsorship / term / degree gates. Unknown metadata always passes:
+    a listing is only dropped on a *known* disqualifier."""
+    if filters.require_sponsorship and listing.sponsorship in (
+        eligibility.NO_SPONSORSHIP,
+        eligibility.CITIZENSHIP_REQUIRED,
+    ):
+        return False
+    if filters.terms and listing.terms:
+        wanted = {term.lower() for term in filters.terms}
+        if not any(term.lower() in wanted for term in listing.terms):
+            return False
+    if filters.degrees and listing.degrees:
+        wanted = {degree.lower() for degree in filters.degrees}
+        if not any(degree.lower() in wanted for degree in listing.degrees):
+            return False
+    return True
+
+
 def matches(listing: Listing, filters: Filters) -> bool:
-    """The full filter chain for one listing."""
-    if not has_internship_signal(listing.title, filters.include_keywords):
-        return False
+    """The full filter chain for one listing.
+
+    Curated list entries skip the title heuristics (internship signal and
+    staff-role exclusion): the list's curation already answered those. The
+    user's own narrowing (keywords, locations, eligibility) always applies.
+    """
+    if not listing.curated:
+        if not has_internship_signal(listing.title, filters.include_keywords):
+            return False
+        if is_staff_role(listing.title):
+            return False
     if not matches_required_keywords(listing.title, filters.match_keywords):
-        return False
-    if is_staff_role(listing.title):
         return False
     lowered = listing.title.lower()
     if any(keyword.lower() in lowered for keyword in filters.exclude_keywords):
+        return False
+    if not _passes_eligibility(listing, filters):
         return False
     return _passes_locations(listing, filters)

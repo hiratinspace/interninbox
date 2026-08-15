@@ -54,3 +54,41 @@ def test_fetch_hits_documented_endpoint(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         assert greenhouse.fetch(fetcher, "aurora-widgets") == []
     assert seen == ["https://boards-api.greenhouse.io/v1/boards/aurora-widgets/jobs"]
+
+
+def test_content_flag_requests_descriptions_and_classifies(instant_fetcher) -> None:
+    from conftest import load_fixture
+
+    seen: list[str] = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return json_response(load_fixture("greenhouse/aurora_widgets.json"))
+
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        listings = greenhouse.fetch(fetcher, "aurora-widgets", content=True)
+    assert "content=true" in seen[0]
+    by_title = {listing.title: listing for listing in listings}
+    swe = by_title["Software Engineering Intern (Summer 2027)"]
+    assert swe.sponsorship == "no-sponsorship"  # escaped HTML content classified
+    assert swe.terms == ("Summer 2027",)  # derived from the title
+    assert by_title["Data Science Intern"].sponsorship == "offers-sponsorship"
+
+
+def test_without_content_flag_no_param_and_unknown_sponsorship(instant_fetcher) -> None:
+    from conftest import load_fixture
+
+    seen: list[str] = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        payload = load_fixture("greenhouse/aurora_widgets.json")
+        # The real API includes `content` only when ?content=true is sent.
+        for job in payload["jobs"]:
+            job.pop("content", None)
+        return json_response(payload)
+
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        listings = greenhouse.fetch(fetcher, "aurora-widgets")
+    assert "content" not in seen[0]
+    assert all(listing.sponsorship is None for listing in listings)

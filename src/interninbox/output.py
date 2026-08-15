@@ -87,6 +87,9 @@ def summary_line(result: ScanResult) -> str:
     count = len(result.listings)
     noun = "internship" if count == 1 else "internships"
     line = f"{count} {noun} across {result.companies_scanned} companies"
+    if result.sources_scanned:
+        list_noun = "list" if result.sources_scanned == 1 else "lists"
+        line += f" and {result.sources_scanned} {list_noun}"
     if result.companies_failed:
         failed_noun = "company" if result.companies_failed == 1 else "companies"
         line += f" ({result.companies_failed} {failed_noun} failed)"
@@ -135,6 +138,8 @@ def format_json(result: ScanResult) -> str:
                 "locations": list(listing.locations),
                 "posted_at": listing.posted_at.isoformat() if listing.posted_at else None,
                 "url": listing.url,
+                "sponsorship": listing.sponsorship,
+                "terms": list(listing.terms),
             }
             for listing in listings
         ],
@@ -143,6 +148,7 @@ def format_json(result: ScanResult) -> str:
             "companies_scanned": result.companies_scanned,
             "companies_failed": result.companies_failed,
             "listings_checked": result.listings_checked,
+            "sources_scanned": result.sources_scanned,
         },
     }
     return json.dumps(payload, indent=2)

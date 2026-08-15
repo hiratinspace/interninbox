@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Callable
 
+from interninbox import eligibility
 from interninbox.config import UsaJobsConfig
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
@@ -163,4 +164,7 @@ def parse_item(item: object) -> Listing:
         # Key on the stable Control Number only, the org name displayed above
         # can change (agency rename) without making this a "new" listing (L6).
         identity=f"{SOURCE}:{control_number}",
+        # Federal Pathways positions are restricted to US citizens.
+        sponsorship=eligibility.CITIZENSHIP_REQUIRED,
+        terms=eligibility.derive_terms(title),
     )

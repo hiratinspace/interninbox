@@ -53,6 +53,10 @@ def make_listing(
     url: str = "https://boards.example-greenhouse.test/aurora-widgets/jobs/1",
     locations: tuple[str, ...] = ("New York, NY",),
     posted_at: dt.datetime | None = None,
+    sponsorship: str | None = None,
+    terms: tuple[str, ...] = (),
+    degrees: tuple[str, ...] = (),
+    curated: bool = False,
 ) -> Listing:
     return Listing(
         company=company,
@@ -62,4 +66,8 @@ def make_listing(
         url=url,
         locations=locations,
         posted_at=posted_at,
+        sponsorship=sponsorship,
+        terms=terms,
+        degrees=degrees,
+        curated=curated,
     )

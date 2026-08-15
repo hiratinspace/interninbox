@@ -37,6 +37,8 @@ API for federal Pathways internships.
 - 🔒 **Private by design.** No accounts, no API keys, no LLMs, no telemetry. The only things ever written are your config and a local state file.
 - 📍 **Search by location.** A country, a US state, or a city, with smart aliases: `"California"` finds boards that wrote `"CA"`, and vice versa.
 - 🎯 **Search by role.** Nine curated presets (`software`, `cybersecurity`, `finance`, and more) or your own whole-word keywords.
+- 🛂 **Filter by eligibility.** `require_sponsorship = true` hides listings known to not sponsor visas or to require US citizenship, read from list metadata and job descriptions. Season (`terms`) and degree filters too.
+- 📋 **Scan the community lists.** `sources = ["simplify"]` pulls the SimplifyJobs seasonal list (thousands of curated internships across every employer, kept fresh by the community) in one polite request, and diffs it with `--new-only`.
 - 🏢 **100+ curated companies.** Big and small, every slug live-verified. Scan your own list, or sweep a whole tier of the registry.
 - 🧭 **First-run wizard.** No config? Answer three questions, get results, and optionally save them for next time.
 - 📬 **A personal feed.** `--new-only` shows just what appeared since your last scan; run it on a schedule and it becomes your morning internship digest.
@@ -156,6 +158,10 @@ companies = [
 # well-known boards), "all", "large", or "startups". Unioned with `companies`.
 registry = "none"
 
+# Community internship lists to scan too ("simplify" = the SimplifyJobs
+# seasonal list; one polite request for thousands of curated internships).
+sources = ["simplify"]
+
 [filters]
 # Extra title keywords that count as an internship signal, on top of the
 # built-in one (intern, internship, co-op, summer analyst, apprentice, ...).
@@ -175,6 +181,14 @@ locations = ["New York", "Remote"]
 # When true (the default), remote listings always pass the locations filter.
 remote_ok = true
 
+# Hide listings KNOWN to not sponsor visas or to require US citizenship.
+# Silent listings are always kept.
+require_sponsorship = true
+
+# Keep only these seasons / degree levels (unknown always passes).
+terms = ["Summer 2027"]
+degrees = ["Bachelor's"]
+
 # Optional: federal Pathways internships via the official USAJOBS API.
 [usajobs]
 enabled = true
@@ -187,12 +201,16 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 | --- | --- | --- | --- |
 | `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
 | `registry` | `"none"`, `"top"`, `"all"`, `"large"`, `"startups"` | `"none"` | Also scan the curated [registry](#the-company-registry); unioned with `companies` (duplicates removed) |
+| `sources` | list of strings | `[]` | [Community lists](#community-list-sources) to scan too: `"simplify"` (current season) or `"simplify-summer2026"` / `"simplify-summer2027"` to pin one |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal (broadens) |
 | `filters.match_keywords` | list of strings | `[]` | Whole-word title keywords required on top of the signal (narrows) |
 | `filters.roles` | list of strings | `[]` | Named [role presets](#role-presets) whose keywords merge into `match_keywords` |
 | `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
 | `filters.locations` | list of strings | `[]` | Whole-word location terms to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
+| `filters.require_sponsorship` | bool | `false` | Hide listings [known](#eligibility-filters) to not sponsor visas or to require US citizenship |
+| `filters.terms` | list of strings | `[]` | Keep only these seasons (e.g. `["Summer 2027"]`); unknown passes |
+| `filters.degrees` | list of strings | `[]` | Keep only these degree levels (e.g. `["Bachelor's"]`); unknown passes |
 | `usajobs.enabled` | bool | `false` | Turn the USAJOBS adapter on |
 | `usajobs.email` | string | none | The email your USAJOBS key is registered under |
 | `usajobs.keywords` | list of strings | `[]` | Extra keyword filter for the USAJOBS query |
@@ -286,6 +304,60 @@ Big sweeps are slow *on purpose*: polite pacing floors same-host requests at
 tags)` row to `src/interninbox/registry.py`, then run
 `scripts/verify_registry.py`. It must report a live `PASS` (HTTP 200) before
 the entry ships. Never commit an unverified slug.
+
+## Community list sources
+
+The broadest coverage comes from the community: the
+[SimplifyJobs seasonal internship lists](https://github.com/SimplifyJobs/Summer2027-Internships)
+track thousands of internships across *every* employer, including companies
+on ATSes this tool has no adapter for, and publish the data behind their
+README as structured JSON. Add the list as a source:
+
+```toml
+sources = ["simplify"]
+```
+
+One polite request fetches the whole list; entries arrive with sponsorship,
+season, and degree metadata that feeds the
+[eligibility filters](#eligibility-filters). Your keyword, role, and location
+filters apply to list entries exactly as they do to scanned boards, and
+`--new-only` diffs the list run over run, so the terminal becomes a feed over
+the list students refresh by hand. `"simplify"` follows the current season;
+pin `"simplify-summer2026"` or `"simplify-summer2027"` to a specific one.
+
+List data is community-maintained (credit: SimplifyJobs and contributors) and
+links out to each employer's own posting; interninbox never scrapes those
+hosts. A source that is unreachable degrades to one warning line and the rest
+of the scan continues.
+
+## Eligibility filters
+
+The questions that actually disqualify an application get first-class
+filters:
+
+```toml
+[filters]
+require_sponsorship = true   # for international students
+terms = ["Summer 2027"]
+degrees = ["Bachelor's"]
+```
+
+- **`require_sponsorship = true`** hides listings *known* to not sponsor
+  visas or to require US citizenship. Signals come from community-list
+  metadata and from the job description itself: Lever and Ashby include
+  descriptions in their normal responses, and Greenhouse descriptions are
+  fetched (only when this filter is on, since they inflate each board fetch).
+  Phrases like "unable to sponsor", "must not require sponsorship", "US
+  citizenship is required", security-clearance and ITAR requirements are
+  classified conservatively; a listing that says nothing is **always kept**,
+  never guessed about. USAJOBS listings count as citizenship-restricted.
+- **`terms`** keeps only the seasons you want, read from list metadata or
+  the title ("... Intern (Summer 2027)"). Unknown seasons pass.
+- **`degrees`** keeps only listings open to your level (list-source entries
+  carry this metadata). Unknown passes.
+
+The same data flows into `--json` output as `sponsorship` and `terms` fields
+on every listing, so scripts can post-process it.
 
 ## `--new-only` and the state file
 

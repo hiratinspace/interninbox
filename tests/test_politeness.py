@@ -193,3 +193,18 @@ def test_dripping_response_hits_read_deadline() -> None:
     ) as fetcher:
         with pytest.raises(AdapterError, match="too slowly"):
             fetcher.get_json("https://api.lever.co/v0/postings/one")
+
+
+def test_per_call_max_response_bytes_override() -> None:
+    big = b'{"jobs": "' + b"x" * 2048 + b'"}'
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, content=big)),
+        sleep=lambda _: None,
+        max_response_bytes=1024,
+    ) as fetcher:
+        # The instance cap would refuse this body; the per-call override allows it.
+        assert fetcher.get_json(
+            "https://api.lever.co/v0/postings/one", max_response_bytes=1_000_000
+        )
+        with pytest.raises(AdapterError, match="larger than"):
+            fetcher.get_json("https://api.lever.co/v0/postings/one")

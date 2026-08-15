@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from interninbox import eligibility
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
 
@@ -25,7 +26,9 @@ BASE_URL = "https://api.lever.co/v0/postings/{slug}"
 SOURCE = "lever"
 
 
-def fetch(fetcher: Fetcher, slug: str) -> list[Listing]:
+def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+    # `content` is accepted for adapter-signature uniformity; Lever includes
+    # descriptions in every response, so classification is always on.
     payload = fetcher.get_json(BASE_URL.format(slug=slug), params={"mode": "json"})
     return parse(payload, slug)
 
@@ -63,12 +66,18 @@ def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
     if isinstance(created_at, int | float) and not isinstance(created_at, bool):
         posted_at = dt.datetime.fromtimestamp(created_at / 1000, tz=dt.UTC)
 
+    title = str(posting["text"])
+    description = posting.get("descriptionPlain") or posting.get("description") or ""
+    sponsorship = eligibility.classify_sponsorship(str(description))
+
     return Listing(
         company=slug,
         source=SOURCE,
         listing_id=str(posting["id"]),
-        title=str(posting["text"]),
+        title=title,
         url=str(posting["hostedUrl"]),
         locations=tuple(locations),
         posted_at=posted_at,
+        sponsorship=sponsorship,
+        terms=eligibility.derive_terms(title),
     )

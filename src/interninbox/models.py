@@ -20,6 +20,14 @@ class Listing:
     # Overrides the derived state key when the default one would be unstable,
     # e.g. USAJOBS, whose `company` is a mutable free-text agency name.
     identity: str | None = None
+    # Eligibility signals (see eligibility.py); None / empty means unknown,
+    # and unknown never causes a listing to be dropped.
+    sponsorship: str | None = None
+    terms: tuple[str, ...] = ()
+    degrees: tuple[str, ...] = ()
+    # True for listings from a curated internship list: the internship-signal
+    # and staff-role title heuristics are skipped (curation already did that).
+    curated: bool = False
 
     @property
     def key(self) -> str:
@@ -42,6 +50,7 @@ class ScanResult:
     listings: list[Listing] = field(default_factory=list)
     companies_scanned: int = 0
     companies_failed: int = 0
+    sources_scanned: int = 0  # community lists fetched successfully
     listings_checked: int = 0  # everything fetched, before any filtering
     listings_matched: int = 0  # after filters, before --new-only
     warnings: list[str] = field(default_factory=list)

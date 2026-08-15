@@ -162,3 +162,38 @@ def test_sr_abbreviation_is_staff() -> None:
 
 def test_sre_is_not_a_staff_marker() -> None:
     assert not is_staff_role("Site Reliability Intern (SRE)")
+
+
+def test_require_sponsorship_drops_known_bad_keeps_unknown() -> None:
+    filters = Filters(require_sponsorship=True)
+    assert not matches(make_listing(sponsorship="no-sponsorship"), filters)
+    assert not matches(make_listing(sponsorship="citizenship-required"), filters)
+    assert matches(make_listing(sponsorship="offers-sponsorship"), filters)
+    assert matches(make_listing(sponsorship=None), filters)  # silence never drops
+
+
+def test_terms_filter_keeps_matches_and_unknowns() -> None:
+    filters = Filters(terms=("Summer 2027",))
+    assert matches(make_listing(terms=("Summer 2027", "Fall 2027")), filters)
+    assert not matches(make_listing(terms=("Summer 2026",)), filters)
+    assert matches(make_listing(terms=()), filters)  # unknown term passes
+    # case-insensitive
+    assert matches(make_listing(terms=("summer 2027",)), Filters(terms=("SUMMER 2027",)))
+
+
+def test_degrees_filter_keeps_matches_and_unknowns() -> None:
+    filters = Filters(degrees=("Bachelor's",))
+    assert matches(make_listing(degrees=("Bachelor's", "Master's")), filters)
+    assert not matches(make_listing(degrees=("PhD",)), filters)
+    assert matches(make_listing(degrees=()), filters)
+
+
+def test_curated_listing_bypasses_title_heuristics() -> None:
+    # A curated list entry needs no intern-word and skips the staff filter...
+    assert matches(make_listing(title="2027 Technology Analyst Program", curated=True), Filters())
+    assert not matches(make_listing(title="2027 Technology Analyst Program"), Filters())
+    # ...but user narrowing still applies.
+    filters = Filters(match_keywords=("security",))
+    assert not matches(make_listing(title="Data Analyst Program", curated=True), filters)
+    filters = Filters(exclude_keywords=("analyst",))
+    assert not matches(make_listing(title="Data Analyst Program", curated=True), filters)

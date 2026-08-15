@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from interninbox import eligibility
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
 
@@ -22,8 +23,20 @@ BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
 SOURCE = "greenhouse"
 
 
-def fetch(fetcher: Fetcher, slug: str) -> list[Listing]:
-    payload = fetcher.get_json(BASE_URL.format(slug=slug))
+# Descriptions inflate big boards to several MB, so they are opt-in and get
+# a wider per-call size cap.
+CONTENT_MAX_BYTES = 30_000_000
+
+
+def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+    if content:
+        payload = fetcher.get_json(
+            BASE_URL.format(slug=slug),
+            params={"content": "true"},
+            max_response_bytes=CONTENT_MAX_BYTES,
+        )
+    else:
+        payload = fetcher.get_json(BASE_URL.format(slug=slug))
     return parse(payload, slug)
 
 
@@ -53,12 +66,24 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
         except ValueError:
             posted_at = None
 
+    title = str(job["title"])
+    # `content` is present only when fetched with content=true; it arrives
+    # HTML-escaped ("&lt;p&gt;...").
+    sponsorship = None
+    raw_content = job.get("content")
+    if isinstance(raw_content, str) and raw_content:
+        sponsorship = eligibility.classify_sponsorship(
+            eligibility.text_from_html(raw_content, escaped=True)
+        )
+
     return Listing(
         company=slug,
         source=SOURCE,
         listing_id=str(job["id"]),
-        title=str(job["title"]),
+        title=title,
         url=str(job["absolute_url"]),
         locations=locations,
         posted_at=posted_at,
+        sponsorship=sponsorship,
+        terms=eligibility.derive_terms(title),
     )
