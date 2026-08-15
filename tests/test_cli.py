@@ -593,7 +593,7 @@ def test_interactive_scan_without_config_runs_and_offers_save(
     )
     monkeypatch.chdir(tmp_path)
     # location blank, roles blank, companies -> [1] all, save? -> y
-    scripted = iter(["", "", "1", "y"])
+    scripted = iter(["", "", "1", "", "", "y"])
     code = main(
         ["scan", "--interactive"],
         transport=make_transport(route),
@@ -617,7 +617,7 @@ def test_interactive_save_declined_writes_nothing(
         (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
     )
     monkeypatch.chdir(tmp_path)
-    scripted = iter(["", "", "1", "n"])
+    scripted = iter(["", "", "1", "", "", "n"])
     code = main(
         ["scan", "--interactive"],
         transport=make_transport(route),

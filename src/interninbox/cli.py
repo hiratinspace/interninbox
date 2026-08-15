@@ -316,9 +316,13 @@ def _cmd_scan(
         config = dataclasses.replace(
             base,
             filters=dataclasses.replace(
-                base.filters, locations=answers.locations, roles=answers.roles
+                base.filters,
+                locations=answers.locations,
+                roles=answers.roles,
+                require_sponsorship=answers.require_sponsorship,
             ),
             registry=base.registry if answers.tier == "config" else answers.tier,
+            sources=("simplify",) if answers.include_list else base.sources,
         )
     else:
         config = load_config(args.config)
