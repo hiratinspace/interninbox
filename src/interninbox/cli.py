@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import datetime as dt
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -12,7 +14,7 @@ from pathlib import Path
 
 import httpx
 
-from interninbox import __version__, banner, wizard
+from interninbox import __version__, banner, notify, wizard
 from interninbox import companies as companies_mod
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
@@ -23,7 +25,7 @@ from interninbox.config import (
 )
 from interninbox.fetch import Fetcher
 from interninbox.freshness import parse_since
-from interninbox.models import ScanResult
+from interninbox.models import Listing, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
 from interninbox.scan import (
     dedupe_listings,
@@ -73,6 +75,31 @@ def _since_arg(text: str) -> object:
         return parse_since(text)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+# watch never polls faster than this: job boards do not change that often,
+# and neither should our traffic against them.
+WATCH_INTERVAL_FLOOR = dt.timedelta(minutes=15)
+_INTERVAL = re.compile(r"^(\d+)([mhdw])$")
+_INTERVAL_UNIT_MINUTES = {"m": 1, "h": 60, "d": 60 * 24, "w": 60 * 24 * 7}
+
+
+def _interval_arg(text: str) -> dt.timedelta:
+    """--interval values, --since style plus minutes; enforces the 15m floor."""
+    match = _INTERVAL.match(text.strip())
+    if not match:
+        raise argparse.ArgumentTypeError(
+            f"invalid --interval value {text!r}: use a number and unit, like 30m, 2h, 1d"
+        )
+    amount, unit = match.groups()
+    interval = dt.timedelta(minutes=int(amount) * _INTERVAL_UNIT_MINUTES[unit])
+    if interval < WATCH_INTERVAL_FLOOR:
+        raise argparse.ArgumentTypeError(
+            f"--interval {text.strip()} is below the 15m floor: watch polls public "
+            "job boards, and checking more often than every 15 minutes is not "
+            "polite. For a one-off check right now, run `interninbox scan --new-only`."
+        )
+    return interval
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -153,6 +180,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mcp_parser.set_defaults(func=_cmd_mcp)
 
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="re-scan on an interval and notify about new listings (Ctrl-C to stop)",
+    )
+    watch_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(DEFAULT_CONFIG_NAME),
+        help=f"path to the config file (default: ./{DEFAULT_CONFIG_NAME})",
+    )
+    watch_parser.add_argument(
+        "--interval",
+        type=_interval_arg,
+        default=dt.timedelta(minutes=30),
+        metavar="WINDOW",
+        help="time between checks (30m, 2h, 1d; default 30m, floor 15m)",
+    )
+    watch_parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="skip desktop notifications; keep the per-cycle lines and tables",
+    )
+    watch_parser.add_argument(
+        "--state",
+        type=Path,
+        default=None,
+        help="path to the seen-listings state file (shared with `scan --new-only`; "
+        "default: derived from the config name)",
+    )
+    watch_parser.set_defaults(func=_cmd_watch)
+
     return parser
 
 
@@ -163,14 +221,21 @@ def main(
     sleep: Callable[[float], None] = time.sleep,
     env: Mapping[str, str] | None = None,
     input_fn: Callable[[str], str] | None = None,
+    notifier: Callable[[str, str], None] | None = None,
 ) -> int:
-    """CLI entry. `transport`, `sleep`, `env`, `input_fn` are injectable for tests."""
+    """CLI entry. `transport`, `sleep`, `env`, `input_fn`, and `notifier` (the
+    watch notification sink, default `notify.send`) are injectable for tests."""
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         resolved_env = env if env is not None else os.environ
         return args.func(
-            args, transport=transport, sleep=sleep, env=resolved_env, input_fn=input_fn
+            args,
+            transport=transport,
+            sleep=sleep,
+            env=resolved_env,
+            input_fn=input_fn,
+            notifier=notifier,
         )
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -302,6 +367,7 @@ def _cmd_scan(
     sleep: Callable[[float], None],
     env: Mapping[str, str],
     input_fn: Callable[[str], str] | None,
+    **_: object,
 ) -> int:
     # Brand banner: interactive terminals only, never on machine output, and
     # only to stderr so it can never corrupt piped --json / --markdown.
@@ -385,3 +451,90 @@ def _cmd_scan(
         print("error: every configured company failed; is the network down?", file=sys.stderr)
         return 1
     return 0
+
+
+def _format_interval(interval: dt.timedelta) -> str:
+    """A timedelta back in --interval spelling: 30m, 2h, 1d."""
+    minutes = int(interval.total_seconds() // 60)
+    if minutes % (60 * 24) == 0:
+        return f"{minutes // (60 * 24)}d"
+    if minutes % 60 == 0:
+        return f"{minutes // 60}h"
+    return f"{minutes}m"
+
+
+def _notification_body(listings: list[Listing]) -> str:
+    """Up to three titles for the notification body, then a remainder count."""
+    titles = [listing.title for listing in listings[:3]]
+    remaining = len(listings) - len(titles)
+    if remaining > 0:
+        titles.append(f"and {remaining} more")
+    return ", ".join(titles)
+
+
+def _essential_progress(line: str, *, essential: bool = False) -> None:
+    """Watch-mode progress sink: essential lines only (a per-company line
+    every cycle would drown the feed the loop exists to produce)."""
+    if essential:
+        _stderr_line(line)
+
+
+def _cmd_watch(
+    args: argparse.Namespace,
+    *,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
+    env: Mapping[str, str],
+    notifier: Callable[[str, str], None] | None,
+    **_: object,
+) -> int:
+    """A polite foreground loop over the shared scan core, new-only implied.
+
+    Each cycle scans, prints a timestamped new-count line to stderr, shows any
+    new listings as the usual table on stdout, sends one best-effort desktop
+    notification per non-empty batch, then sleeps the interval. Ctrl-C (during
+    the scan or the sleep) is the intended exit: main() turns it into 130.
+    """
+    if not (sys.stdin.isatty() and sys.stderr.isatty()):
+        print(
+            "error: watch needs an interactive terminal (it is a foreground "
+            "loop, not a daemon). For unattended runs, schedule "
+            "`interninbox scan --new-only` with cron instead.",
+            file=sys.stderr,
+        )
+        return 1
+    config = load_config(args.config)
+    state_path = args.state if args.state else default_state_path(args.config)
+    send = notifier if notifier is not None else notify.send
+    interval_seconds = args.interval.total_seconds()
+    _stderr_line(
+        f"watching for new internships every {_format_interval(args.interval)}, "
+        "Ctrl-C to stop"
+    )
+    while True:
+        result = run_scan(
+            config,
+            new_only=True,
+            transport=transport,
+            sleep=sleep,
+            env=env,
+            progress=_essential_progress,
+            state_path=state_path,
+        )
+        for note in result.notes:
+            _stderr_line(note)
+        for warning in result.warnings:
+            _stderr_line(f"warning: {warning}")
+        count = len(result.listings)
+        noun = "internship" if count == 1 else "internships"
+        stamp = time.strftime("%H:%M:%S")
+        _stderr_line(f"[{stamp}] {count} new {noun}")
+        if result.listings:
+            hyperlinks = sys.stdout.isatty() and not env.get("NO_COLOR")
+            print(format_table(result, hyperlinks=hyperlinks), flush=True)
+            if not args.no_notify:
+                send(
+                    f"interninbox: {count} new {noun}",
+                    _notification_body(result.listings),
+                )
+        sleep(interval_seconds)

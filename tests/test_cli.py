@@ -3,6 +3,7 @@
 import io
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -955,3 +956,173 @@ def test_mcp_ctrl_c_exits_cleanly_and_silently(
     assert code == 130
     assert captured.out == ""  # never a partial protocol line
     assert captured.err == ""  # no "interrupted" noise for MCP clients
+
+
+# --- the watch subcommand -----------------------------------------------------
+
+
+class _TTYStdin:
+    """A stand-in stdin that claims to be a terminal (watch never reads it)."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def _force_watch_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """watch requires both stdin and stderr to be terminals."""
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(sys, "stdin", _TTYStdin())
+
+
+def _interval_capped_sleep(cycles: int) -> Callable[[float], None]:
+    """A sleep that ends the watch loop after `cycles` cycles.
+
+    Cycle-limit mechanism (recorded choice): the fetcher's politeness pauses
+    are under a second while the inter-cycle sleep is minutes, so any duration
+    of 60 seconds or more is the watch loop's own sleep. Raising
+    KeyboardInterrupt on the `cycles`-th one both caps the loop and observes
+    the clean Ctrl-C exit (130) on the same run.
+    """
+    seen: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        if seconds < 60:
+            return  # a politeness pause inside the Fetcher, not the interval
+        seen.append(seconds)
+        if len(seen) >= cycles:
+            raise KeyboardInterrupt
+
+    fake_sleep.intervals = seen  # type: ignore[attr-defined]
+    return fake_sleep
+
+
+def test_watch_two_cycles_notifies_once_and_persists_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import re
+
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+
+    ashby_requests = {"count": 0}
+
+    def cycling(request: httpx.Request) -> httpx.Response:
+        # From the second board fetch on, one brand-new intern role appears.
+        if request.url.host == "api.ashbyhq.com":
+            ashby_requests["count"] += 1
+            board = load_fixture("ashby/harborline.json")
+            if ashby_requests["count"] >= 2:
+                board["jobs"].append({
+                    "id": "1b2c3d4e-9999-4222-8333-444455556666",
+                    "title": "Tidepool Data Intern (Summer 2027)",
+                    "jobUrl": "https://jobs.example-ashby.test/harborline/9f8e7d6c",
+                    "location": "Seattle, WA",
+                    "publishedAt": "2026-08-14T09:00:00+00:00",
+                    "descriptionHtml": "<p>Fictional synthetic fixture text.</p>",
+                })
+            return json_response(board)
+        return route(request)
+
+    transport = make_transport(cycling)
+    # Seed the shared state with a plain scan: watch continues scan's feed.
+    assert main(["scan", "--config", str(config)], transport=transport, **NO_SLEEP) == 0
+    capsys.readouterr()
+
+    notifications: list[tuple[str, str]] = []
+    fake_sleep = _interval_capped_sleep(2)
+    code = main(
+        ["watch", "--config", str(config)],
+        transport=transport,
+        sleep=fake_sleep,
+        env={},
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
+    captured = capsys.readouterr()
+    assert code == 130  # the injected Ctrl-C ends the loop cleanly
+    # Exactly one notification: cycle 1 found nothing new, cycle 2 found one.
+    assert len(notifications) == 1
+    title, body = notifications[0]
+    assert title == "interninbox: 1 new internship"
+    assert "Tidepool Data Intern (Summer 2027)" in body
+    # One timestamped stderr line per cycle, with the new-count.
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] 0 new internships", captured.err)
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] 1 new internship", captured.err)
+    # The non-empty batch is shown on stdout too.
+    assert "Tidepool Data Intern (Summer 2027)" in captured.out
+    # The default interval is 30 minutes, slept between the two cycles.
+    assert fake_sleep.intervals == [1800.0, 1800.0]  # type: ignore[attr-defined]
+
+    # State persisted between cycles and after exit: the listing cycle 2
+    # notified about is not "new" to a follow-up scan.
+    code = main(
+        ["scan", "--config", str(config), "--new-only"], transport=transport, **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "0 internships" in out
+
+
+def test_watch_no_notify_suppresses_notifications(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    notifications: list[tuple[str, str]] = []
+    code = main(
+        ["watch", "--config", str(config), "--no-notify"],
+        transport=make_transport(route),
+        sleep=_interval_capped_sleep(1),
+        env={},
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
+    captured = capsys.readouterr()
+    assert code == 130
+    assert notifications == []  # --no-notify: no desktop noise
+    # Fresh state: the first cycle still reports and shows everything as new.
+    assert "2 new internships" in captured.err
+    assert "Platform Engineering Intern (Fall)" in captured.out
+
+
+def test_watch_interval_floor_and_bad_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["watch", "--config", str(config), "--interval", "5m"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2  # argparse validation, before any request
+    assert "15m" in capsys.readouterr().err  # the floor is named, politely
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["watch", "--config", str(config), "--interval", "banana"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2
+    assert "like 30m" in capsys.readouterr().err
+
+
+def test_watch_refuses_without_a_terminal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # capsys stderr (and pytest's stdin) are not terminals: watch must refuse
+    # before touching the network and point at the cron-friendly alternative.
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    hosts: list[str] = []
+
+    def tracking(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        return route(request)
+
+    code = main(["watch", "--config", str(config)], transport=make_transport(tracking), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert hosts == []  # refused before a single request
+    assert "scan --new-only" in captured.err
+    assert "cron" in captured.err
