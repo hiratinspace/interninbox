@@ -48,7 +48,7 @@ def estimate_label(count: int) -> str:
     return f"~{max(2, round(seconds / 60))} min"
 
 
-_G, _L, _A = "greenhouse", "lever", "ashby"
+_G, _L, _A, _S = "greenhouse", "lever", "ashby", "smartrecruiters"
 
 REGISTRY: tuple[RegistryCompany, ...] = (
     # ---- greenhouse, large ----
@@ -158,4 +158,11 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_A, "baseten", "Baseten", "startup", ("ai", "infra")),
     RegistryCompany(_A, "railway", "Railway", "startup", ("devtools",)),
     RegistryCompany(_A, "decagon", "Decagon", "startup", ("ai",)),
+    # ---- smartrecruiters (enterprise) ----
+    RegistryCompany(_S, "BoschGroup", "Bosch", "large", ("hardware",), top=True),
+    RegistryCompany(_S, "ServiceNow", "ServiceNow", "large", ("infra",), top=True),
+    RegistryCompany(_S, "Ubisoft2", "Ubisoft", "large", ("gaming",)),
+    RegistryCompany(_S, "Visa", "Visa", "large", ("fintech",), top=True),
+    RegistryCompany(_S, "McDonaldsCorporation", "McDonald's", "large", ("consumer",)),
+    RegistryCompany(_S, "Experian", "Experian", "large", ("fintech",)),
 )
