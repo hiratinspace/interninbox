@@ -332,15 +332,17 @@ def _cmd_scan(
         print(f"warning: {state.warning}", file=sys.stderr)
 
     companies = _effective_companies(config)
+    filters = _effective_filters(config)
     if len(companies) >= 20:
-        print(
+        note = (
             f"scanning {len(companies)} boards, roughly "
-            f"{registry_mod.estimate_label(len(companies))} at polite pacing",
-            file=sys.stderr,
+            f"{registry_mod.estimate_label_for(companies)} at polite pacing"
         )
+        if filters.require_sponsorship:
+            note += " (downloading descriptions for the sponsorship filter)"
+        print(note, file=sys.stderr)
 
     progress = sys.stderr.isatty() and not args.quiet
-    filters = _effective_filters(config)
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
         # Descriptions are only worth fetching when a filter reads them.

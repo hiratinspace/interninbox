@@ -3,7 +3,14 @@
 import pytest
 
 from interninbox.config import KNOWN_ATS
-from interninbox.registry import REGISTRY, TIERS, estimate_label, select
+from interninbox.registry import (
+    REGISTRY,
+    TIERS,
+    estimate_label,
+    estimate_label_for,
+    estimate_seconds,
+    select,
+)
 
 
 def test_registry_is_reasonably_large_and_mixed() -> None:
@@ -42,3 +49,18 @@ def test_unknown_tier_raises() -> None:
 def test_estimate_label_scales() -> None:
     assert estimate_label(4).endswith("s")
     assert "min" in estimate_label(150)
+
+
+def test_estimate_weighs_enterprise_boards_by_requests() -> None:
+    from interninbox.config import Company
+
+    light = [Company("greenhouse", f"g{i}") for i in range(10)]
+    heavy = light + [Company("smartrecruiters", "BigCo")]
+    assert estimate_seconds(heavy) > estimate_seconds(light) + 5  # ~10 requests, not 1
+
+
+def test_estimate_label_for_companies() -> None:
+    from interninbox.config import Company
+
+    label = estimate_label_for([Company("greenhouse", f"g{i}") for i in range(100)])
+    assert label.startswith("~")

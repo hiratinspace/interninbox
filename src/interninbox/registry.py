@@ -42,7 +42,24 @@ def select(tier: str) -> tuple[RegistryCompany, ...]:
 
 def estimate_label(count: int) -> str:
     """Human 'how long will this take' hint. Rough on purpose; network varies."""
-    seconds = max(5, round(count * _SECONDS_PER_BOARD))
+    return _label(max(5, round(count * _SECONDS_PER_BOARD)))
+
+
+def estimate_seconds(companies: object) -> int:
+    """Request-weighted estimate: an enterprise SmartRecruiters board can take
+    up to 10 paginated requests, not 1."""
+    total = 0.0
+    for company in companies:  # any object with an .ats attribute
+        weight = 10 if getattr(company, "ats", "") == "smartrecruiters" else 1
+        total += weight * _SECONDS_PER_BOARD
+    return max(5, round(total))
+
+
+def estimate_label_for(companies: object) -> str:
+    return _label(estimate_seconds(companies))
+
+
+def _label(seconds: int) -> str:
     if seconds < 90:
         return f"~{seconds} s"
     return f"~{max(2, round(seconds / 60))} min"
