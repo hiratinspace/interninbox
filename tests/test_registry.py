@@ -14,7 +14,7 @@ from interninbox.registry import (
 
 
 def test_registry_is_reasonably_large_and_mixed() -> None:
-    assert len(REGISTRY) >= 100
+    assert len(REGISTRY) >= 160  # grew from 109 in the 2026-08-15 list harvest
     sizes = {entry.size for entry in REGISTRY}
     assert sizes == {"large", "startup"}  # update 4: big AND small every run
 
