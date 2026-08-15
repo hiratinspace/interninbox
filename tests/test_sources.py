@@ -115,3 +115,44 @@ def test_unwritable_cache_never_breaks_the_scan(instant_fetcher, monkeypatch) ->
     monkeypatch.setattr(sources, "_cache_dir", lambda: (_ for _ in ()).throw(OSError(13, "denied")))
     with instant_fetcher(make_transport(_handler)) as fetcher:
         assert sources.fetch_source(fetcher, "simplify")
+
+
+def test_default_season_follows_the_recruiting_cycle() -> None:
+    import datetime as _dt
+
+    # From August, students hunt for NEXT summer; through July, the current one.
+    assert sources.default_simplify_season(_dt.date(2026, 8, 14)) == 2027
+    assert sources.default_simplify_season(_dt.date(2027, 7, 31)) == 2027
+    assert sources.default_simplify_season(_dt.date(2027, 8, 1)) == 2028
+    assert sources.default_simplify_season(_dt.date(2027, 1, 15)) == 2027
+
+
+def test_simplify_alias_resolves_to_the_default_season() -> None:
+    import datetime as _dt
+
+    spec = sources.resolve_source("simplify", today=_dt.date(2026, 8, 14))
+    assert "Summer2027" in spec.url
+    pinned = sources.resolve_source("simplify-summer2026")
+    assert "Summer2026" in pinned.url
+    assert pinned.family == "simplify"
+
+
+def test_unpublished_season_falls_back_with_warning(instant_fetcher, monkeypatch, tmp_path) -> None:
+    import datetime as _dt
+
+    import httpx as _httpx
+
+    monkeypatch.setattr(sources, "_cache_dir", lambda: tmp_path)
+
+    def handler(request: _httpx.Request) -> _httpx.Response:
+        if "Summer2028" in str(request.url):
+            return _httpx.Response(404)  # next season's repo not created yet
+        return json_response(load_fixture("sources/simplify.json"))
+
+    warnings: list[str] = []
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        listings = sources.fetch_source(
+            fetcher, "simplify", warn=warnings.append, today=_dt.date(2027, 9, 1)
+        )
+    assert listings  # served by the previous season instead of failing
+    assert warnings and "Summer 2027" in warnings[0]

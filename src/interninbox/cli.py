@@ -384,7 +384,7 @@ def _scan_sources(
         if progress:
             print(f"[source] {name} ...", file=sys.stderr, flush=True)
         try:
-            listings = sources_mod.fetch_source(fetcher, name)
+            listings = sources_mod.fetch_source(fetcher, name, warn=result.warnings.append)
         except AdapterError as exc:
             result.companies_failed += 1
             result.warnings.append(f"source {name}: {exc}")

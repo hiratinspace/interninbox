@@ -15,6 +15,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,35 +48,75 @@ class Source:
         return self.name.split("-")[0]
 
 
-def _simplify(repo: str) -> str:
-    return f"https://raw.githubusercontent.com/SimplifyJobs/{repo}/dev/.github/scripts/listings.json"
+def _simplify_url(year: int) -> str:
+    return (
+        "https://raw.githubusercontent.com/SimplifyJobs/"
+        f"Summer{year}-Internships/dev/.github/scripts/listings.json"
+    )
 
 
-KNOWN_SOURCES: dict[str, Source] = {
-    "simplify": Source(
-        "simplify", _simplify("Summer2027-Internships"), "SimplifyJobs Summer 2027 list"
-    ),
-    "simplify-summer2027": Source(
-        "simplify-summer2027", _simplify("Summer2027-Internships"), "SimplifyJobs Summer 2027 list"
-    ),
-    "simplify-summer2026": Source(
-        "simplify-summer2026", _simplify("Summer2026-Internships"), "SimplifyJobs Summer 2026 list"
-    ),
-}
+def default_simplify_season(today: dt.date | None = None) -> int:
+    """The summer season students are hunting for on `today`.
+
+    From August, the cycle targets NEXT summer (recruiting opens ~a year
+    ahead); through July, the current one. No release needed when seasons
+    roll over.
+    """
+    today = today or dt.date.today()
+    return today.year + 1 if today.month >= 8 else today.year
 
 
-def fetch_source(fetcher: Fetcher, name: str) -> list[Listing]:
+_PINNED = re.compile(r"^simplify-summer(20\d{2})$")
+
+
+def resolve_source(name: str, today: dt.date | None = None) -> Source:
+    """A concrete Source for a configured name, or raise AdapterError."""
+    if name == "simplify":
+        year = default_simplify_season(today)
+        return Source("simplify", _simplify_url(year), f"SimplifyJobs Summer {year} list")
+    pinned = _PINNED.match(name)
+    if pinned:
+        year = int(pinned.group(1))
+        return Source(name, _simplify_url(year), f"SimplifyJobs Summer {year} list")
+    valid = ", ".join(sorted(known_source_names()))
+    raise AdapterError(f"unknown source {name!r}; valid sources: {valid}")
+
+
+def is_known_source(name: str) -> bool:
+    return name == "simplify" or bool(_PINNED.match(name))
+
+
+def known_source_names() -> tuple[str, ...]:
+    """Names shown in validation errors (the pinned form is a pattern)."""
+    year = default_simplify_season()
+    return ("simplify", f"simplify-summer{year - 1}", f"simplify-summer{year}")
+
+
+def fetch_source(
+    fetcher: Fetcher,
+    name: str,
+    warn: Callable[[str], None] = lambda message: None,
+    today: dt.date | None = None,
+) -> list[Listing]:
     """Fetch one community list and map its entries to Listings.
 
     Only active, visible entries are kept. Individual malformed rows are
     skipped (this is community-maintained data; one broken row must not kill
     the source); only a wrong top-level shape is an error.
     """
-    spec = KNOWN_SOURCES.get(name)
-    if spec is None:
-        valid = ", ".join(sorted(KNOWN_SOURCES))
-        raise AdapterError(f"unknown source {name!r}; valid sources: {valid}")
-    payload = _fetch_with_cache(fetcher, spec)
+    spec = resolve_source(name, today)
+    try:
+        payload = _fetch_with_cache(fetcher, spec)
+    except AdapterError:
+        if name != "simplify":
+            raise
+        # The next season's repo may not be published yet: fall back one
+        # season rather than failing the scan.
+        year = default_simplify_season(today) - 1
+        fallback = Source("simplify", _simplify_url(year), f"SimplifyJobs Summer {year} list")
+        payload = _fetch_with_cache(fetcher, fallback)
+        warn(f"source simplify: next season's list is not published yet, "
+             f"using the Summer {year} list")
     if not isinstance(payload, list):
         raise AdapterError(f"unexpected {spec.label} shape (not a JSON array)")
     listings: list[Listing] = []

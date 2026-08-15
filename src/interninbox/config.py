@@ -198,11 +198,11 @@ def load_config(path: Path) -> Config:
         )
 
     sources = _string_list(data.get("sources"), where="sources")
-    from interninbox.sources import KNOWN_SOURCES
+    from interninbox.sources import is_known_source, known_source_names
 
     for source in sources:
-        if source not in KNOWN_SOURCES:
-            valid = ", ".join(sorted(KNOWN_SOURCES))
+        if not is_known_source(source):
+            valid = ", ".join(known_source_names())
             raise ConfigError(f"unknown source {source!r}; valid sources: {valid}")
 
     if not companies and not usajobs_cfg.enabled and registry == "none" and not sources:
