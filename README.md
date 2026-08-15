@@ -28,9 +28,9 @@ plaid     Data Science Intern                     San Francisco   -           ht
 
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
-board APIs of **Greenhouse**, **Lever**, and **Ashby** (the same endpoints each
-company's own careers page calls). It can also read the official **USAJOBS**
-API for federal Pathways internships.
+board APIs of **Greenhouse**, **Lever**, **Ashby**, and **SmartRecruiters**
+(the same endpoints each company's own careers page calls). It can also read
+the official **USAJOBS** API for federal Pathways internships.
 
 ## Why interninbox
 
@@ -49,6 +49,7 @@ API for federal Pathways internships.
 ```sh
 pipx install interninbox      # recommended: isolated, on your PATH
 uv tool install interninbox   # or with uv
+uvx interninbox scan          # or zero-install, run it straight from PyPI
 ```
 
 Requires **Python 3.11+**. Installing straight from git works too
@@ -106,6 +107,7 @@ your last scan.
 | `interninbox init` | Write a starter `interninbox.toml` (refuses to overwrite) |
 | `interninbox companies` | Print the curated [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
 | `interninbox roles` | Print the [role presets](#role-presets) and the exact keywords each expands to |
+| `interninbox find-board NAME` | Probe the supported ATSes for a company's board slug and print ready-to-paste `"ats:slug"` lines |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -118,6 +120,7 @@ your last scan.
 | `--new-only` | Show only listings not seen by a previous scan |
 | `--state PATH` | Use a state file other than the one derived from the config name |
 | `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them: a one-shot override of `locations`, `roles`, and `registry` that leaves everything else untouched |
+| `--since WINDOW` | Show only listings posted within the window (`7d`, `36h`, `2w`); undated listings are kept |
 | `--quiet`, `-q` | Suppress the banner and per-company progress lines |
 
 An interactive scan opens with the wordmark ("intern" in white, "inbox" in
@@ -136,7 +139,8 @@ blue), then prints per-company progress:
 It goes to `stderr` (never `stdout`), so piped `--json` / `--markdown` output
 stays clean. It appears only on a real terminal, honors `NO_COLOR`, uses a
 theme-proof 256-color blue, and vanishes under pipes, redirects, and cron.
-Pass `--quiet` to silence it (and the progress lines) anywhere.
+Pass `--quiet` to silence it (and the progress lines) anywhere. On a real
+terminal, each result's URL is a clickable OSC 8 hyperlink.
 
 Exit codes: `0` on success (a single company that fails prints a one-line
 warning and never aborts the scan); `1` when the config is invalid or every
@@ -228,10 +232,13 @@ Open a company's careers page and read the URL of an actual job listing:
 | `job-boards.greenhouse.io/acme/...` | `"greenhouse:acme"` |
 | `jobs.lever.co/acme/...` | `"lever:acme"` |
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
+| `jobs.smartrecruiters.com/AcmeCorp/...` | `"smartrecruiters:AcmeCorp"` |
 
-If a scan reports `HTTP 404 from <host>: check the slug exists`, the slug is
-wrong or the company changed ATS providers. `interninbox companies` lists the
-full registry of known-good entries to start from.
+Or let the tool guess: `interninbox find-board "Acme Corp"` probes all four
+ATSes with the obvious slug candidates and prints whatever answers. If a scan
+reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or
+the company changed ATS providers. `interninbox companies` lists the full
+registry of known-good entries to start from.
 
 ## How matching works
 
@@ -425,9 +432,10 @@ you run it, you own your data, and nothing phones home.
 
 ## FAQ
 
-**Why only Greenhouse, Lever, and Ashby?** They expose documented public board
-APIs designed for exactly this. More sources may come; PRs welcome if the
-source has a documented public API.
+**Why these ATSes?** Greenhouse, Lever, Ashby, and SmartRecruiters expose
+documented public board APIs designed for exactly this, and the community
+list covers employers on everything else. PRs welcome for any source with a
+documented public API.
 
 **Does it store or send my data anywhere?** No. The only writes are your config
 and the local state file. There is no telemetry of any kind.
