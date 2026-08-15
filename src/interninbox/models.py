@@ -20,6 +20,14 @@ class Listing:
     # Overrides the derived state key when the default one would be unstable,
     # e.g. USAJOBS, whose `company` is a mutable free-text agency name.
     identity: str | None = None
+    # Eligibility signals (see eligibility.py); None / empty means unknown,
+    # and unknown never causes a listing to be dropped.
+    sponsorship: str | None = None
+    terms: tuple[str, ...] = ()
+    degrees: tuple[str, ...] = ()
+    # True for listings from a curated internship list: the internship-signal
+    # and staff-role title heuristics are skipped (curation already did that).
+    curated: bool = False
 
     @property
     def key(self) -> str:
