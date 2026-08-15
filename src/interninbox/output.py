@@ -148,6 +148,7 @@ def format_json(result: ScanResult) -> str:
             "companies_scanned": result.companies_scanned,
             "companies_failed": result.companies_failed,
             "listings_checked": result.listings_checked,
+            "sources_scanned": result.sources_scanned,
         },
     }
     return json.dumps(payload, indent=2)

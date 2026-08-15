@@ -66,6 +66,7 @@ def test_json_output_shape() -> None:
         "companies_scanned": 2,
         "companies_failed": 1,
         "listings_checked": 3,
+        "sources_scanned": 0,
     }
     first = payload["listings"][0]
     assert first["title"] == "Newest Intern"
