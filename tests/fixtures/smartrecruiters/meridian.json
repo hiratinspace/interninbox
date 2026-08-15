@@ -1,0 +1,49 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 3,
+  "content": [
+    {
+      "id": "744000900000001",
+      "uuid": "11111111-2222-4333-8444-555566667777",
+      "name": "Payments Software Intern (Summer 2027)",
+      "releasedDate": "2026-08-01T10:00:11.853Z",
+      "location": {
+        "city": "Austin",
+        "region": "TX",
+        "country": "us",
+        "remote": false,
+        "fullLocation": "Austin, TX, United States"
+      },
+      "company": { "identifier": "MeridianPay", "name": "Meridian Pay" }
+    },
+    {
+      "id": "744000900000002",
+      "uuid": "aaaa1111-2222-4333-8444-555566667777",
+      "name": "Risk Analytics Intern",
+      "releasedDate": "2026-07-20T09:00:00.000Z",
+      "location": {
+        "city": "",
+        "region": "",
+        "country": "us",
+        "remote": true,
+        "fullLocation": ""
+      },
+      "company": { "identifier": "MeridianPay", "name": "Meridian Pay" }
+    },
+    {
+      "id": "744000900000003",
+      "uuid": "bbbb1111-2222-4333-8444-555566667777",
+      "name": "Senior Treasury Manager",
+      "releasedDate": "2026-06-01T08:00:00.000Z",
+      "location": {
+        "city": "London",
+        "region": "",
+        "country": "gb",
+        "remote": false,
+        "fullLocation": "London, United Kingdom"
+      },
+      "company": { "identifier": "MeridianPay", "name": "Meridian Pay" }
+    }
+  ]
+}

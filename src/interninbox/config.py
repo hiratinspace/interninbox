@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-KNOWN_ATS = ("greenhouse", "lever", "ashby")
+KNOWN_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters")
 
 DEFAULT_CONFIG_NAME = "interninbox.toml"
 

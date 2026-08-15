@@ -203,3 +203,11 @@ def test_sources_alone_is_something_to_scan(tmp_path: Path) -> None:
     path.write_text('sources = ["simplify"]\n', encoding="utf-8")
     config = load_config(path)
     assert config.companies == () and config.sources == ("simplify",)
+
+
+def test_smartrecruiters_is_a_known_ats(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text('companies = ["smartrecruiters:MeridianPay"]\n', encoding="utf-8")
+    config = load_config(path)
+    assert config.companies[0].ats == "smartrecruiters"
+    assert config.companies[0].slug == "MeridianPay"

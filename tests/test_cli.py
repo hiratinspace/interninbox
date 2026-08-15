@@ -727,3 +727,21 @@ def test_successful_source_prevents_all_failed_exit(
     captured = capsys.readouterr()
     assert code == 0  # the list delivered results; not a total failure
     assert "Quantum Software Intern" in captured.out
+
+
+def test_smartrecruiters_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def sr_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response(load_fixture("smartrecruiters/meridian.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["smartrecruiters:MeridianPay"]\n')
+    code = main(["scan", "--config", str(config)], transport=make_transport(sr_route), **NO_SLEEP)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Payments Software Intern (Summer 2027)" in out
+    assert "Risk Analytics Intern" in out
+    assert "Senior Treasury Manager" not in out  # staff filter still applies
+    assert "jobs.smartrecruiters.com/MeridianPay/744000900000001" in out
