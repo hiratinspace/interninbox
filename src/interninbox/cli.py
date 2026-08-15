@@ -15,6 +15,7 @@ import httpx
 from interninbox import __version__, banner, wizard
 from interninbox import companies as companies_mod
 from interninbox import registry as registry_mod
+from interninbox import sources as sources_mod
 from interninbox.adapters import ADAPTERS, usajobs
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
@@ -249,13 +250,17 @@ def _cmd_scan(
         )
 
     progress = sys.stderr.isatty() and not args.quiet
+    filters = _effective_filters(config)
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
-        _scan_boards(companies, fetcher, result, progress=progress)
+        # Descriptions are only worth fetching when a filter reads them.
+        _scan_boards(
+            companies, fetcher, result, progress=progress, content=filters.require_sponsorship
+        )
         _scan_usajobs(config, fetcher, env, result, progress=progress)
+        _scan_sources(config, fetcher, result, progress=progress)
 
     result.listings_checked = len(result.listings)
-    filters = _effective_filters(config)
     matched = [listing for listing in result.listings if matches(listing, filters)]
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
@@ -289,14 +294,19 @@ def _cmd_scan(
                   "uses it.", file=sys.stderr)
 
     attempted = result.companies_scanned + result.companies_failed
-    if attempted and result.companies_scanned == 0:
+    if attempted and result.companies_scanned == 0 and result.sources_scanned == 0:
         print("error: every configured company failed; is the network down?", file=sys.stderr)
         return 1
     return 0
 
 
 def _scan_boards(
-    companies: tuple[Company, ...], fetcher: Fetcher, result: ScanResult, *, progress: bool = False
+    companies: tuple[Company, ...],
+    fetcher: Fetcher,
+    result: ScanResult,
+    *,
+    progress: bool = False,
+    content: bool = False,
 ) -> None:
     total = len(companies)
     for index, company in enumerate(companies, start=1):
@@ -304,12 +314,28 @@ def _scan_boards(
             print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
         adapter_fetch = ADAPTERS[company.ats]
         try:
-            listings = adapter_fetch(fetcher, company.slug)
+            listings = adapter_fetch(fetcher, company.slug, content=content)
         except AdapterError as exc:
             result.companies_failed += 1
             result.warnings.append(f"{company.label}: {exc}")
             continue
         result.companies_scanned += 1
+        result.listings.extend(listings)
+
+
+def _scan_sources(
+    config: Config, fetcher: Fetcher, result: ScanResult, *, progress: bool = False
+) -> None:
+    for name in config.sources:
+        if progress:
+            print(f"[source] {name} ...", file=sys.stderr, flush=True)
+        try:
+            listings = sources_mod.fetch_source(fetcher, name)
+        except AdapterError as exc:
+            result.companies_failed += 1
+            result.warnings.append(f"source {name}: {exc}")
+            continue
+        result.sources_scanned += 1
         result.listings.extend(listings)
 
 

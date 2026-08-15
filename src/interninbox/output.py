@@ -87,6 +87,9 @@ def summary_line(result: ScanResult) -> str:
     count = len(result.listings)
     noun = "internship" if count == 1 else "internships"
     line = f"{count} {noun} across {result.companies_scanned} companies"
+    if result.sources_scanned:
+        list_noun = "list" if result.sources_scanned == 1 else "lists"
+        line += f" and {result.sources_scanned} {list_noun}"
     if result.companies_failed:
         failed_noun = "company" if result.companies_failed == 1 else "companies"
         line += f" ({result.companies_failed} {failed_noun} failed)"

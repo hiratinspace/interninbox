@@ -50,6 +50,7 @@ class ScanResult:
     listings: list[Listing] = field(default_factory=list)
     companies_scanned: int = 0
     companies_failed: int = 0
+    sources_scanned: int = 0  # community lists fetched successfully
     listings_checked: int = 0  # everything fetched, before any filtering
     listings_matched: int = 0  # after filters, before --new-only
     warnings: list[str] = field(default_factory=list)

@@ -32,6 +32,8 @@ def route(request: httpx.Request) -> httpx.Response:
     if host == "data.usajobs.gov":
         page = request.url.params.get("Page")
         return json_response(load_fixture(f"usajobs/page{page}.json"))
+    if host == "raw.githubusercontent.com":
+        return json_response(load_fixture("sources/simplify.json"))
     return httpx.Response(404)
 
 
@@ -639,3 +641,89 @@ def test_missing_config_without_tty_still_errors(
     )
     assert code == 1
     assert "interninbox init" in capsys.readouterr().err
+
+
+def test_sources_scan_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = write_config(tmp_path, 'sources = ["simplify"]\n')
+    code = main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Quantum Software Intern" in out
+    # Curated bypass end to end: no intern-word in this title, still shown.
+    assert "2027 Mapping Analyst Program" in out
+    assert "Closed Intern" not in out  # inactive rows never surface
+    assert "and 1 list" in out  # summary counts the source separately
+
+
+def test_require_sponsorship_hides_known_bad_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(
+        tmp_path, 'sources = ["simplify"]\n[filters]\nrequire_sponsorship = true\n'
+    )
+    assert main(["scan", "--config", str(config)], transport=make_transport(route), **NO_SLEEP) == 0
+    out = capsys.readouterr().out
+    assert "Quantum Software Intern" in out  # offers sponsorship
+    assert "2027 Mapping Analyst Program" not in out  # does not sponsor
+    assert "Systems Intern (Clearance)" not in out  # citizenship required
+
+
+def test_require_sponsorship_requests_greenhouse_content(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    urls: list[str] = []
+
+    def tracking(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return route(request)
+
+    config = write_config(
+        tmp_path,
+        'companies = ["greenhouse:aurora-widgets"]\n[filters]\nrequire_sponsorship = true\n',
+    )
+    code = main(["scan", "--config", str(config)], transport=make_transport(tracking), **NO_SLEEP)
+    assert code == 0
+    capsys.readouterr()
+    assert any("content=true" in url for url in urls)
+    # The SWE intern's description says "unable to sponsor": hidden.
+    # (behavior covered above; here we care that the param was sent)
+
+    urls.clear()
+    config2 = write_config(tmp_path, 'companies = ["greenhouse:aurora-widgets"]\n')
+    code = main(["scan", "--config", str(config2)], transport=make_transport(tracking), **NO_SLEEP)
+    assert code == 0
+    capsys.readouterr()
+    assert not any("content=true" in url for url in urls)  # don't pay for unused filters
+
+
+def test_source_failure_warns_and_boards_continue(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def flaky(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "raw.githubusercontent.com":
+            return httpx.Response(500)
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nsources = ["simplify"]\n')
+    code = main(["scan", "--config", str(config)], transport=make_transport(flaky), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "source simplify" in captured.err  # one warning line
+    assert "Platform Engineering Intern (Fall)" in captured.out  # boards unaffected
+
+
+def test_successful_source_prevents_all_failed_exit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def boards_down(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "raw.githubusercontent.com":
+            return json_response(load_fixture("sources/simplify.json"))
+        return httpx.Response(500)
+
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nsources = ["simplify"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(boards_down), **NO_SLEEP
+    )
+    captured = capsys.readouterr()
+    assert code == 0  # the list delivered results; not a total failure
+    assert "Quantum Software Intern" in captured.out
