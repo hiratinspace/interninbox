@@ -291,6 +291,10 @@ def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
         kept[index] = dataclasses.replace(
             base,
             sponsorship=base.sponsorship or extra.sponsorship,
+            # Evidence travels with whichever sponsorship verdict was kept.
+            sponsorship_evidence=(
+                base.sponsorship_evidence if base.sponsorship else extra.sponsorship_evidence
+            ),
             terms=base.terms or extra.terms,
             degrees=base.degrees or extra.degrees,
         )

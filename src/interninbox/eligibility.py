@@ -91,6 +91,15 @@ _TERM = re.compile(r"\b(spring|summer|fall|autumn|winter)\s+(20\d{2})\b", re.IGN
 _TAG = re.compile(r"<[^>]+>")
 
 
+# Evidence sentences are provenance for humans: long enough to audit the
+# verdict, short enough for a JSON payload.
+_EVIDENCE_MAX_CHARS = 160
+
+
+def _evidence(sentence: str) -> str:
+    return " ".join(sentence.split())[:_EVIDENCE_MAX_CHARS]
+
+
 def classify_sponsorship(text: str) -> str | None:
     """The sponsorship signal in `text`, or None when it says nothing.
 
@@ -98,31 +107,44 @@ def classify_sponsorship(text: str) -> str | None:
     ("clearance preferred", "no sponsorship required") never disqualify.
     Across sentences, the most restrictive confirmed signal wins.
     """
+    classification, _ = classify_sponsorship_with_evidence(text)
+    return classification
+
+
+def classify_sponsorship_with_evidence(text: str) -> tuple[str | None, str | None]:
+    """`classify_sponsorship` plus provenance: the sentence that decided it.
+
+    Returns (classification, evidence). The evidence is the first sentence
+    carrying the winning signal, whitespace-collapsed and trimmed to 160
+    characters; both are None when the text says nothing.
+    """
     if not text:
-        return None
-    found_negative = False
-    found_positive = False
+        return None, None
+    negative_evidence: str | None = None
+    positive_evidence: str | None = None
     for sentence in _SENTENCE.split(text):
         if not sentence.strip():
             continue
         hedged = bool(_HEDGE.search(sentence))
         if not hedged:
             if _CITIZENSHIP_STRONG.search(sentence):
-                return CITIZENSHIP_REQUIRED
+                return CITIZENSHIP_REQUIRED, _evidence(sentence)
             if _CITIZENSHIP_WEAK.search(sentence) and _REQUIREMENT.search(sentence):
-                return CITIZENSHIP_REQUIRED
+                return CITIZENSHIP_REQUIRED, _evidence(sentence)
         if _NEGATIVE.search(sentence) and not (hedged and not _POSITIVE.search(sentence)):
-            found_negative = True
+            if negative_evidence is None:
+                negative_evidence = _evidence(sentence)
         if _POSITIVE.search(sentence):
             if _NOT_FOR_INTERNS.search(sentence):
-                found_negative = True
-            else:
-                found_positive = True
-    if found_negative:
-        return NO_SPONSORSHIP
-    if found_positive:
-        return OFFERS_SPONSORSHIP
-    return None
+                if negative_evidence is None:
+                    negative_evidence = _evidence(sentence)
+            elif positive_evidence is None:
+                positive_evidence = _evidence(sentence)
+    if negative_evidence is not None:
+        return NO_SPONSORSHIP, negative_evidence
+    if positive_evidence is not None:
+        return OFFERS_SPONSORSHIP, positive_evidence
+    return None, None
 
 
 def derive_terms(title: str) -> tuple[str, ...]:

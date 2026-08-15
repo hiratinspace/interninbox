@@ -92,3 +92,20 @@ def test_without_content_flag_no_param_and_unknown_sponsorship(instant_fetcher) 
         listings = greenhouse.fetch(fetcher, "aurora-widgets")
     assert "content" not in seen[0]
     assert all(listing.sponsorship is None for listing in listings)
+    assert all(listing.sponsorship_evidence is None for listing in listings)
+
+
+def test_content_mode_populates_sponsorship_evidence(instant_fetcher) -> None:
+    from conftest import load_fixture
+
+    def handler(request):
+        return json_response(load_fixture("greenhouse/aurora_widgets.json"))
+
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        listings = greenhouse.fetch(fetcher, "aurora-widgets", content=True)
+    by_title = {listing.title: listing for listing in listings}
+    swe = by_title["Software Engineering Intern (Summer 2027)"]
+    assert swe.sponsorship_evidence == "We are unable to sponsor visas for this role."
+    data_science = by_title["Data Science Intern"]
+    assert data_science.sponsorship_evidence == "Visa sponsorship is available for this role."
+    assert by_title["Senior Backend Engineer, Widget Platform"].sponsorship_evidence is None

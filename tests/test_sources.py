@@ -40,6 +40,43 @@ def test_fetch_source_maps_active_visible_entries(instant_fetcher) -> None:
     assert by_title["Systems Intern (Clearance)"].sponsorship == "citizenship-required"
 
 
+def test_list_metadata_becomes_sponsorship_evidence(instant_fetcher) -> None:
+    with instant_fetcher(make_transport(_handler)) as fetcher:
+        listings = sources.fetch_source(fetcher, "simplify")
+    by_title = {listing.title: listing for listing in listings}
+    assert (
+        by_title["Quantum Software Intern"].sponsorship_evidence
+        == 'list: "Offers Sponsorship"'
+    )
+    assert (
+        by_title["2027 Mapping Analyst Program"].sponsorship_evidence
+        == 'list: "Does Not Offer Sponsorship"'
+    )
+    assert (
+        by_title["Systems Intern (Clearance)"].sponsorship_evidence
+        == 'list: "U.S. Citizenship is Required"'
+    )
+
+
+def test_unrecognized_list_sponsorship_value_has_no_evidence(instant_fetcher) -> None:
+    row = {
+        "id": "zzzz-9999",
+        "company_name": "Ambiguous Inc",
+        "title": "Mystery Intern",
+        "url": "https://boards.example-list.test/ambiguous/mystery",
+        "locations": [],
+        "terms": [],
+        "degrees": [],
+        "sponsorship": "Other",
+        "active": True,
+        "is_visible": True,
+    }
+    with instant_fetcher(make_transport(lambda _: json_response([row]))) as fetcher:
+        (listing,) = sources.fetch_source(fetcher, "simplify")
+    assert listing.sponsorship is None
+    assert listing.sponsorship_evidence is None
+
+
 def test_seasonal_source_names_share_the_simplify_family(instant_fetcher) -> None:
     with instant_fetcher(make_transport(_handler)) as fetcher:
         listings = sources.fetch_source(fetcher, "simplify-summer2026")

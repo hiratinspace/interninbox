@@ -7,6 +7,7 @@ from interninbox.eligibility import (
     NO_SPONSORSHIP,
     OFFERS_SPONSORSHIP,
     classify_sponsorship,
+    classify_sponsorship_with_evidence,
     derive_terms,
     text_from_html,
 )
@@ -122,3 +123,87 @@ def test_signals_are_scoped_to_their_sentence() -> None:
 def test_sponsorship_excluded_for_interns_is_negative() -> None:
     text = "Visa sponsorship is available for full-time roles but not for interns."
     assert classify_sponsorship(text) == NO_SPONSORSHIP
+
+
+# Provenance: classify_sponsorship_with_evidence returns the classification
+# plus the sentence that triggered it, so users can audit the verdict.
+
+
+def test_evidence_is_the_triggering_sentence() -> None:
+    text = "A great team. We are unable to sponsor visas for this role. Apply now!"
+    assert classify_sponsorship_with_evidence(text) == (
+        NO_SPONSORSHIP,
+        "We are unable to sponsor visas for this role.",
+    )
+
+
+def test_evidence_for_citizenship_requirement() -> None:
+    text = "Flexible hours preferred. This role requires US citizenship."
+    assert classify_sponsorship_with_evidence(text) == (
+        CITIZENSHIP_REQUIRED,
+        "This role requires US citizenship.",
+    )
+
+
+def test_evidence_is_the_fragment_the_splitter_saw() -> None:
+    # The sentence splitter treats the period in "U.S." as a boundary, so the
+    # classifier matches the trailing fragment; evidence reports that fragment
+    # honestly rather than reconstructing prose it never examined.
+    text = "Work on maps. U.S. citizenship is required for this position."
+    assert classify_sponsorship_with_evidence(text) == (
+        CITIZENSHIP_REQUIRED,
+        "citizenship is required for this position.",
+    )
+
+
+def test_evidence_for_positive_signal() -> None:
+    text = "Visa sponsorship is available for this role."
+    assert classify_sponsorship_with_evidence(text) == (
+        OFFERS_SPONSORSHIP,
+        "Visa sponsorship is available for this role.",
+    )
+
+
+def test_no_evidence_when_unknown() -> None:
+    assert classify_sponsorship_with_evidence("A friendly team.") == (None, None)
+    assert classify_sponsorship_with_evidence("") == (None, None)
+
+
+def test_evidence_follows_the_winning_signal() -> None:
+    # Positive and restrictive signals in one text: the evidence must belong
+    # to the restrictive sentence that decided the classification.
+    both = "Visa sponsorship available for some roles; this role requires US citizenship."
+    classification, evidence = classify_sponsorship_with_evidence(both)
+    assert classification == CITIZENSHIP_REQUIRED
+    assert evidence == "this role requires US citizenship."
+
+
+def test_evidence_for_sponsorship_excluded_for_interns() -> None:
+    text = "Great perks. Visa sponsorship is available for full-time roles but not for interns."
+    assert classify_sponsorship_with_evidence(text) == (
+        NO_SPONSORSHIP,
+        "Visa sponsorship is available for full-time roles but not for interns.",
+    )
+
+
+def test_evidence_collapses_whitespace_and_trims_to_160_chars() -> None:
+    filler = "for this role in every location we operate " * 5
+    text = f"We are unable to  sponsor visas {filler}now."
+    classification, evidence = classify_sponsorship_with_evidence(text)
+    assert classification == NO_SPONSORSHIP
+    assert evidence is not None
+    assert len(evidence) == 160
+    assert evidence.startswith("We are unable to sponsor visas for this role")
+    assert "  " not in evidence
+
+
+def test_classify_sponsorship_agrees_with_the_evidence_variant() -> None:
+    texts = [
+        "We cannot sponsor visas.",
+        "Visa sponsorship is available for this role.",
+        "U.S. citizenship is required.",
+        "Nothing about eligibility here.",
+    ]
+    for text in texts:
+        classification, _ = classify_sponsorship_with_evidence(text)
+        assert classify_sponsorship(text) == classification

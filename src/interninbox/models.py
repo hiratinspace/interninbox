@@ -23,6 +23,9 @@ class Listing:
     # Eligibility signals (see eligibility.py); None / empty means unknown,
     # and unknown never causes a listing to be dropped.
     sponsorship: str | None = None
+    # Provenance for the sponsorship verdict: the description sentence that
+    # triggered it (trimmed to 160 chars), or the literal list-metadata value.
+    sponsorship_evidence: str | None = None
     terms: tuple[str, ...] = ()
     degrees: tuple[str, ...] = ()
     # True for listings from a curated internship list: the internship-signal

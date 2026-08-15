@@ -370,7 +370,11 @@ degrees = ["Bachelor's"]
   carry this metadata). Unknown passes.
 
 The same data flows into `--json` output as `sponsorship` and `terms` fields
-on every listing, so scripts can post-process it.
+on every listing, so scripts can post-process it. Each verdict also carries a
+`sponsorship_evidence` field showing where it came from: the description
+sentence that triggered it (trimmed to 160 characters), the list's own
+metadata value (like `list: "Does Not Offer Sponsorship"`), or
+`federal Pathways position` for USAJOBS. Unknown verdicts have no evidence.
 
 ## `--new-only` and the state file
 

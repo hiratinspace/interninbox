@@ -814,6 +814,7 @@ def test_dedupe_merges_board_and_list_versions() -> None:
         source="simplify",
         url="https://jobs.example.test/acme/123/",
         sponsorship="offers-sponsorship",
+        sponsorship_evidence='list: "Offers Sponsorship"',
         degrees=("Bachelor's",),
         curated=True,
     )
@@ -824,6 +825,7 @@ def test_dedupe_merges_board_and_list_versions() -> None:
     kept = deduped[0]
     assert kept.listing_id == "gh1"  # the direct board version wins...
     assert kept.sponsorship == "offers-sponsorship"  # ...but inherits list metadata
+    assert kept.sponsorship_evidence == 'list: "Offers Sponsorship"'  # evidence travels too
     assert kept.degrees == ("Bachelor's",)
 
 

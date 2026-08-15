@@ -166,5 +166,6 @@ def parse_item(item: object) -> Listing:
         identity=f"{SOURCE}:{control_number}",
         # Federal Pathways positions are restricted to US citizens.
         sponsorship=eligibility.CITIZENSHIP_REQUIRED,
+        sponsorship_evidence="federal Pathways position",
         terms=eligibility.derive_terms(title),
     )
