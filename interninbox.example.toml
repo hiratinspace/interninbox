@@ -6,6 +6,8 @@
 #   job-boards.greenhouse.io/<slug>  ->  "greenhouse:<slug>"
 #   jobs.lever.co/<slug>             ->  "lever:<slug>"
 #   jobs.ashbyhq.com/<slug>          ->  "ashby:<slug>"
+# Any other careers site that publishes jobs as schema.org JSON-LD:
+#   "website:<domain>" (a bare domain, e.g. "website:careers.example.com")
 # `interninbox companies` prints a starter list of well-known companies.
 companies = [
     "greenhouse:stripe",

@@ -792,6 +792,47 @@ def test_recruitee_scan_end_to_end(
     assert "silverfen.recruitee.com/o/pipeline-developer-intern-summer-2027" in out
 
 
+def test_website_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    robots = "User-agent: *\nSitemap: https://careers.example-co.test/job-sitemap.xml\n"
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        "<url><loc>https://careers.example-co.test/roles/77-orbit-intern</loc></url>"
+        "</urlset>"
+    )
+    posting = {
+        "@type": "JobPosting",
+        "title": "Orbit Dynamics Intern",
+        "datePosted": "2026-08-01",
+        "jobLocation": {"address": {"addressLocality": "State College", "addressRegion": "PA"}},
+    }
+    page = f'<html><script type="application/ld+json">{json.dumps(posting)}</script></html>'
+
+    def website_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "careers.example-co.test":
+            body = {
+                "/robots.txt": robots,
+                "/job-sitemap.xml": sitemap,
+                "/roles/77-orbit-intern": page,
+            }.get(request.url.path)
+            if body is None:
+                return httpx.Response(404)
+            return httpx.Response(200, text=body)
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["website:careers.example-co.test"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(website_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Orbit Dynamics Intern" in out
+    assert "careers.example-co.test/roles/77-orbit-intern" in out
+
+
 def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:

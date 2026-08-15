@@ -88,6 +88,24 @@ def test_unknown_ats_lists_supported() -> None:
         parse_company("taleo:megacorp")
 
 
+def test_website_company_is_a_bare_domain() -> None:
+    company = parse_company("website:Tesla.com")
+    assert company.ats == "website"
+    assert company.slug == "tesla.com"  # hostnames are case-insensitive
+    assert parse_company("website:psu.wd1.myworkdayjobs.com").slug == "psu.wd1.myworkdayjobs.com"
+
+
+def test_website_company_rejects_scheme_path_and_bare_words() -> None:
+    for bad in (
+        "website:https://tesla.com",
+        "website:tesla.com/careers",
+        "website:tesla",
+        "website:-tesla.com",
+    ):
+        with pytest.raises(ConfigError, match="bare domain"):
+            parse_company(bad)
+
+
 def test_non_string_company_entry(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="must be strings"):
         load_config(write(tmp_path, "companies = [42]"))

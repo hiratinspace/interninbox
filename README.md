@@ -208,7 +208,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, or `recruitee` |
+| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, or `website` (slug = a bare domain, see [Scanning a company website](#scanning-a-company-website)) |
 | `registry` | `"none"`, `"top"`, `"all"`, `"large"`, `"startups"` | `"none"` | Also scan the curated [registry](#the-company-registry); unioned with `companies` (duplicates removed) |
 | `sources` | list of strings | `[]` | [Community lists](#community-list-sources) to scan too: `"simplify"` (current season) or `"simplify-summer2026"` / `"simplify-summer2027"` to pin one |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal (broadens) |
@@ -240,12 +240,47 @@ Open a company's careers page and read the URL of an actual job listing:
 | `jobs.smartrecruiters.com/AcmeCorp/...` | `"smartrecruiters:AcmeCorp"` |
 | `apply.workable.com/acme/j/...` | `"workable:acme"` |
 | `acme.recruitee.com/o/...` | `"recruitee:acme"` |
+| any other careers site | `"website:careers.acme.com"` (the page's own domain) |
 
 Or let the tool guess: `interninbox find-board "Acme Corp"` probes all six
 ATSes with the obvious slug candidates and prints whatever answers. If a scan
 reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or
 the company changed ATS providers. `interninbox companies` lists the full
 registry of known-good entries to start from.
+
+### Scanning a company website
+
+Companies without a supported ATS often still publish their jobs as
+machine-readable structured data for search engines. `website:<domain>` reads
+exactly that public surface, no private APIs and no HTML scraping:
+
+1. **robots.txt** is fetched first with the tool's honest User-Agent. Pages it
+   disallows are skipped (and counted in a warning); if robots.txt itself
+   cannot be read (a 403, say), the whole site is refused, because scanning
+   without permission would be impolite.
+2. **Sitemaps** named in robots.txt (or `/sitemap.xml` as the fallback) are
+   walked for job-looking URLs, with hard caps: at most 20 child sitemaps,
+   two levels of sitemap-index nesting, and at most 200 page fetches per site
+   per scan, each cap announced honestly when hit.
+3. **JSON-LD `JobPosting` blocks** embedded in each page (the schema.org data
+   sites publish for Google Jobs) become listings: title, location, posted
+   date, and the description feeds the same sponsorship classifier as every
+   other adapter. Postings past their `validThrough` date are dropped.
+
+Results are cached per site, keyed by sitemap `lastmod`, so rescans refetch
+only changed pages. Sequential polite pacing still applies: a first scan of a
+big site takes a few minutes by design.
+
+Limits worth knowing: sites that render jobs purely client-side (for example
+lifeattiktok.com, jobs.bytedance.com, most iCIMS tenants) publish no
+server-side JSON-LD and yield nothing; sites that block automated requests
+(www.tesla.com) or disallow crawling in robots.txt are respected and skipped.
+Workday-hosted boards (`something.wd1.myworkdayjobs.com`) and WordPress-style
+career sites generally work end to end:
+
+```toml
+companies = ["website:psu.wd1.myworkdayjobs.com"]
+```
 
 ## How matching works
 

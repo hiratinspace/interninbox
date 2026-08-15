@@ -10,6 +10,7 @@ from interninbox.adapters import (
     lever,
     recruitee,
     smartrecruiters,
+    website,
     workable,
 )
 from interninbox.models import Listing
@@ -17,6 +18,8 @@ from interninbox.models import Listing
 # ats name -> fetch(fetcher, slug) -> list[Listing]
 # fetch(fetcher, slug, *, content=False) -> list[Listing]; `content` asks for
 # job descriptions where they cost an opt-in (Greenhouse, Workable).
+# "website" is the pseudo-ATS whose slug is a bare domain: it reads the
+# site's own sitemaps and JobPosting JSON-LD instead of an ATS API.
 ADAPTERS: dict[str, Callable[..., list[Listing]]] = {
     "greenhouse": greenhouse.fetch,
     "lever": lever.fetch,
@@ -24,4 +27,5 @@ ADAPTERS: dict[str, Callable[..., list[Listing]]] = {
     "smartrecruiters": smartrecruiters.fetch,
     "workable": workable.fetch,
     "recruitee": recruitee.fetch,
+    "website": website.fetch,
 }
