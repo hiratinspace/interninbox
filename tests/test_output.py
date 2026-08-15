@@ -172,3 +172,18 @@ def test_truncate_counts_display_width_not_codepoints() -> None:
     result = ScanResult(listings=[make_listing(locations=(wide,))], companies_scanned=1)
     row = format_table(result).splitlines()[1]
     assert "…" in row
+
+
+def test_json_includes_eligibility_metadata() -> None:
+    result = ScanResult(
+        listings=[
+            make_listing(
+                sponsorship="offers-sponsorship",
+                terms=("Summer 2027",),
+            )
+        ],
+        companies_scanned=1,
+    )
+    item = json.loads(format_json(result))["listings"][0]
+    assert item["sponsorship"] == "offers-sponsorship"
+    assert item["terms"] == ["Summer 2027"]

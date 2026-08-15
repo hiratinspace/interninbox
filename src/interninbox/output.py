@@ -138,6 +138,8 @@ def format_json(result: ScanResult) -> str:
                 "locations": list(listing.locations),
                 "posted_at": listing.posted_at.isoformat() if listing.posted_at else None,
                 "url": listing.url,
+                "sponsorship": listing.sponsorship,
+                "terms": list(listing.terms),
             }
             for listing in listings
         ],

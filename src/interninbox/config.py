@@ -242,6 +242,11 @@ companies = [
 # lists what's in it. Big sweeps take a couple of minutes, by polite design.
 # registry = "none"
 
+# Community internship lists to scan too. "simplify" is the SimplifyJobs
+# seasonal list (thousands of curated internships across every employer,
+# with sponsorship/term/degree metadata) fetched as one polite request.
+# sources = ["simplify"]
+
 [filters]
 # Extra title keywords to treat as an internship signal, in addition to the
 # built-in one (intern, internship, co-op, summer analyst, ...).
@@ -263,6 +268,16 @@ locations = []
 # When true (the default), remote listings pass the locations filter too.
 # When false, remote-only listings are dropped.
 remote_ok = true
+# Hide listings KNOWN to not sponsor visas or to require US citizenship
+# (from list metadata and job descriptions). Listings that say nothing are
+# always kept; a posting is only hidden on a known disqualifier.
+require_sponsorship = false
+# Keep only listings for these seasons (e.g. ["Summer 2027"]). Listings
+# whose season is unknown are kept.
+terms = []
+# Keep only listings open to these degrees (e.g. ["Bachelor's"]). Only
+# community-list entries carry degree data; unknown is kept.
+degrees = []
 
 # Optional: federal internships from USAJOBS (Pathways program).
 # Requires a free API key from https://developer.usajobs.gov/apirequest/.
