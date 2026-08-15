@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from interninbox.adapters import ashby, greenhouse, lever, smartrecruiters, workable
+from interninbox.adapters import (
+    ashby,
+    greenhouse,
+    lever,
+    recruitee,
+    smartrecruiters,
+    workable,
+)
 from interninbox.models import Listing
 
 # ats name -> fetch(fetcher, slug) -> list[Listing]
@@ -16,4 +23,5 @@ ADAPTERS: dict[str, Callable[..., list[Listing]]] = {
     "ashby": ashby.fetch,
     "smartrecruiters": smartrecruiters.fetch,
     "workable": workable.fetch,
+    "recruitee": recruitee.fetch,
 }

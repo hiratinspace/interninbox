@@ -770,6 +770,27 @@ def test_workable_scan_end_to_end(
     assert "apply.workable.com/j/AB12CD3" in out
 
 
+def test_recruitee_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def recruitee_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "silverfen.recruitee.com":
+            return json_response(load_fixture("recruitee/silverfen.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["recruitee:silverfen"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(recruitee_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Pipeline Developer Intern (Summer 2027)" in out
+    # No intern word in the title: employment_type_code carries the signal.
+    assert "Strategy - Early Careers Programme" in out
+    assert "Senior Compositor" not in out  # staff filter still applies
+    assert "silverfen.recruitee.com/o/pipeline-developer-intern-summer-2027" in out
+
+
 def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:

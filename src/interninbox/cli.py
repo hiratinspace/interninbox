@@ -229,7 +229,7 @@ def _cmd_find_board(
             "be unusual: open the company's careers page and read the URL "
             "(job-boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, "
             "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>, "
-            "apply.workable.com/<slug>).",
+            "apply.workable.com/<slug>, <slug>.recruitee.com).",
             file=sys.stderr,
         )
         return 1

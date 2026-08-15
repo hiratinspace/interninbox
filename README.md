@@ -28,8 +28,8 @@ plaid     Data Science Intern                     San Francisco   -           ht
 
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
-board APIs of **Greenhouse**, **Lever**, **Ashby**, **SmartRecruiters**, and
-**Workable**
+board APIs of **Greenhouse**, **Lever**, **Ashby**, **SmartRecruiters**,
+**Workable**, and **Recruitee**
 (the same endpoints each company's own careers page calls). It can also read
 the official **USAJOBS** API for federal Pathways internships.
 
@@ -207,7 +207,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, or `workable` |
+| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, or `recruitee` |
 | `registry` | `"none"`, `"top"`, `"all"`, `"large"`, `"startups"` | `"none"` | Also scan the curated [registry](#the-company-registry); unioned with `companies` (duplicates removed) |
 | `sources` | list of strings | `[]` | [Community lists](#community-list-sources) to scan too: `"simplify"` (current season) or `"simplify-summer2026"` / `"simplify-summer2027"` to pin one |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal (broadens) |
@@ -238,8 +238,9 @@ Open a company's careers page and read the URL of an actual job listing:
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
 | `jobs.smartrecruiters.com/AcmeCorp/...` | `"smartrecruiters:AcmeCorp"` |
 | `apply.workable.com/acme/j/...` | `"workable:acme"` |
+| `acme.recruitee.com/o/...` | `"recruitee:acme"` |
 
-Or let the tool guess: `interninbox find-board "Acme Corp"` probes all five
+Or let the tool guess: `interninbox find-board "Acme Corp"` probes all six
 ATSes with the obvious slug candidates and prints whatever answers. If a scan
 reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or
 the company changed ATS providers. `interninbox companies` lists the full
@@ -356,8 +357,8 @@ degrees = ["Bachelor's"]
 
 - **`require_sponsorship = true`** hides listings *known* to not sponsor
   visas or to require US citizenship. Signals come from community-list
-  metadata and from the job description itself: Lever and Ashby include
-  descriptions in their normal responses, and Greenhouse and Workable
+  metadata and from the job description itself: Lever, Ashby, and Recruitee
+  include descriptions in their normal responses, and Greenhouse and Workable
   descriptions are fetched (only when this filter is on, since they inflate
   each board fetch).
   Classification is requirement-aware and sentence-scoped: "unable to
@@ -475,7 +476,8 @@ you run it, you own your data, and nothing phones home.
 
 ## FAQ
 
-**Why these ATSes?** Greenhouse, Lever, Ashby, SmartRecruiters, and Workable expose
+**Why these ATSes?** Greenhouse, Lever, Ashby, SmartRecruiters, Workable, and
+Recruitee expose
 documented public board APIs designed for exactly this, and the community
 list covers employers on everything else. PRs welcome for any source with a
 documented public API.

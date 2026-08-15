@@ -23,6 +23,9 @@ ENDPOINTS = {
     "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=1",
     # Unknown Workable slugs 404 (verified live), so 200 alone proves liveness.
     "workable": "https://www.workable.com/api/accounts/{slug}",
+    # Unknown Recruitee tenants 404 too (verified live); an existing tenant
+    # with zero published offers still answers 200 with an offers array.
+    "recruitee": "https://{slug}.recruitee.com/api/offers/",
 }
 
 

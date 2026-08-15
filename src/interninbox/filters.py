@@ -155,7 +155,12 @@ def matches(listing: Listing, filters: Filters) -> bool:
     user's own narrowing (keywords, locations, eligibility) always applies.
     """
     if not listing.curated:
-        if not has_internship_signal(listing.title, filters.include_keywords):
+        # The source's own internship declaration (employment_intern) counts
+        # alongside the title signal; the staff-role exclusion still applies.
+        if not (
+            listing.employment_intern
+            or has_internship_signal(listing.title, filters.include_keywords)
+        ):
             return False
         if is_staff_role(listing.title):
             return False

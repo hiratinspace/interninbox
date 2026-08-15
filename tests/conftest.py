@@ -58,6 +58,7 @@ def make_listing(
     terms: tuple[str, ...] = (),
     degrees: tuple[str, ...] = (),
     curated: bool = False,
+    employment_intern: bool = False,
 ) -> Listing:
     return Listing(
         company=company,
@@ -72,4 +73,5 @@ def make_listing(
         terms=terms,
         degrees=degrees,
         curated=curated,
+        employment_intern=employment_intern,
     )
