@@ -331,9 +331,11 @@ def test_banner_shown_on_interactive_scan(
         sleep=lambda _: None,
         env={},  # no NO_COLOR
     )
+    import re
+
     err = capsys.readouterr().err
     assert code == 0
-    assert _BANNER_TAGLINE in err
+    assert _BANNER_TAGLINE in re.sub(r"\x1b\[[0-9;]*m", "", err)  # present once unstyled
     assert "\x1b[" in err  # colored on a tty without NO_COLOR
 
 

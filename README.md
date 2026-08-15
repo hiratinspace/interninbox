@@ -123,15 +123,16 @@ your last scan.
 | `--since WINDOW` | Show only listings posted within the window (`7d`, `36h`, `2w`); undated listings are kept |
 | `--quiet`, `-q` | Suppress the banner and per-company progress lines |
 
-An interactive scan opens with the wordmark ("intern" in white, "inbox" in
-blue), then prints per-company progress:
+An interactive scan opens with the block wordmark ("intern" in white,
+"inbox" in blue, matching the logo), then prints per-company progress:
 
 ```text
-    _       __                      _       __
-   (_)___  / /____  _________      (_)___  / /_  ____  _  __
-  / / __ \/ __/ _ \/ ___/ __ \    / / __ \/ __ \/ __ \| |/_/
- / / / / / /_/  __/ /  / / / /   / / / / / /_/ / /_/ />  <
-/_/_/ /_/\__/\___/_/  /_/ /_/   /_/_/ /_/_.___/\____/_/|_|
+██        ██                            ██        ██
+          ██                                      ██
+██ ██████ ██▀▀▀▀ ██████ ██▀▀██ ██████   ██ ██████ ██████ ██████ ██  ██
+██ ██  ██ ██     ██▄▄██ ██     ██  ██   ██ ██  ██ ██  ██ ██  ██  ▀██▀
+██ ██  ██ ██     ██     ██     ██  ██   ██ ██  ██ ██  ██ ██  ██  ▄██▄
+██ ██  ██  ▀████ ██████ ██     ██  ██   ██ ██  ██ ██████ ██████ ██  ██
 
   > find internships. in the terminal.
 ```
