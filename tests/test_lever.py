@@ -76,3 +76,15 @@ def test_description_plain_is_classified() -> None:
     by_title = {listing.title: listing for listing in listings}
     assert by_title["Cartography Engineering Intern"].sponsorship == "citizenship-required"
     assert by_title["Geospatial Data Intern"].sponsorship is None  # no description, unknown
+
+
+def test_fetch_allows_description_heavy_boards() -> None:
+    from interninbox.fetch import Fetcher
+
+    def handler(request):
+        return json_response(load_fixture("lever/cobalt_cartography.json"))
+
+    with Fetcher(
+        transport=make_transport(handler), sleep=lambda _: None, max_response_bytes=64
+    ) as fetcher:
+        assert lever.fetch(fetcher, "cobalt-cartography")
