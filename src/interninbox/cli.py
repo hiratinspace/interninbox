@@ -111,6 +111,12 @@ def build_parser() -> argparse.ArgumentParser:
     roles_parser = subparsers.add_parser("roles", help="print the role presets")
     roles_parser.set_defaults(func=_cmd_roles)
 
+    find_parser = subparsers.add_parser(
+        "find-board", help="probe the supported ATSes for a company's board slug"
+    )
+    find_parser.add_argument("name", help='company name, e.g. "Acme Corp"')
+    find_parser.set_defaults(func=_cmd_find_board)
+
     return parser
 
 
@@ -167,6 +173,32 @@ def _cmd_roles(args: argparse.Namespace, **_: object) -> int:
     from interninbox import roles as roles_mod
 
     print(roles_mod.render())
+    return 0
+
+
+def _cmd_find_board(
+    args: argparse.Namespace,
+    *,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
+    **_: object,
+) -> int:
+    from interninbox.discover import find_boards
+
+    with Fetcher(transport=transport, sleep=sleep) as fetcher:
+        found = find_boards(fetcher, args.name)
+    if not found:
+        print(
+            f"no board found for {args.name!r} on the supported ATSes. The slug may "
+            "be unusual: open the company's careers page and read the URL "
+            "(job-boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, "
+            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>).",
+            file=sys.stderr,
+        )
+        return 1
+    print("# add to interninbox.toml under companies = [...]")
+    for label in found:
+        print(f'"{label}",')
     return 0
 
 
