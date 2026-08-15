@@ -354,10 +354,15 @@ degrees = ["Bachelor's"]
   metadata and from the job description itself: Lever and Ashby include
   descriptions in their normal responses, and Greenhouse descriptions are
   fetched (only when this filter is on, since they inflate each board fetch).
-  Phrases like "unable to sponsor", "must not require sponsorship", "US
-  citizenship is required", security-clearance and ITAR requirements are
-  classified conservatively; a listing that says nothing is **always kept**,
-  never guessed about. USAJOBS listings count as citizenship-restricted.
+  Classification is requirement-aware and sentence-scoped: "unable to
+  sponsor", "must not require sponsorship", "US citizenship is required", and
+  clearance/ITAR *requirements* disqualify, while hedged mentions ("clearance
+  preferred", "no sponsorship required") never do. A listing that says
+  nothing is **always kept**. USAJOBS listings count as citizenship-restricted
+  (federal Pathways positions are citizenship-limited). SmartRecruiters
+  postings carry no descriptions in the list API, so they stay unknown and
+  are always kept; the phrase lists are English-only, so non-English boards
+  also stay unknown.
 - **`terms`** keeps only the seasons you want, read from list metadata or
   the title ("... Intern (Summer 2027)"). Unknown seasons pass.
 - **`degrees`** keeps only listings open to your level (list-source entries
