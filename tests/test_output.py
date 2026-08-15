@@ -188,3 +188,13 @@ def test_json_includes_eligibility_metadata() -> None:
     item = json.loads(format_json(result))["listings"][0]
     assert item["sponsorship"] == "offers-sponsorship"
     assert item["terms"] == ["Summer 2027"]
+
+
+def test_table_hyperlinks_wrap_urls_only_when_asked() -> None:
+    result = ScanResult(listings=[make_listing()], companies_scanned=1)
+    plain = format_table(result)
+    assert "\x1b]8;;" not in plain
+    linked = format_table(result, hyperlinks=True)
+    assert "\x1b]8;;https://boards.example-greenhouse.test" in linked
+    # Every open hyperlink is closed, nothing leaks past the row.
+    assert linked.count("\x1b]8;;") == 2 * len(result.listings)

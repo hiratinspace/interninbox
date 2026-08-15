@@ -13,6 +13,7 @@ Field notes:
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 
 from interninbox import eligibility
 from interninbox.fetch import Fetcher
@@ -28,7 +29,13 @@ SOURCE = "greenhouse"
 CONTENT_MAX_BYTES = 30_000_000
 
 
-def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+def fetch(
+    fetcher: Fetcher,
+    slug: str,
+    *,
+    content: bool = False,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Listing]:
     if content:
         payload = fetcher.get_json(
             BASE_URL.format(slug=slug),

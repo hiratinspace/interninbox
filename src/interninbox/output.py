@@ -96,7 +96,13 @@ def summary_line(result: ScanResult) -> str:
     return line
 
 
-def format_table(result: ScanResult) -> str:
+def _hyperlink(url: str) -> str:
+    """OSC 8 terminal hyperlink around the URL's own text (we generate the
+    escape ourselves; untrusted input was already stripped by _clean)."""
+    return f"\x1b]8;;{url}\x1b\\{url}\x1b]8;;\x1b\\"
+
+
+def format_table(result: ScanResult, *, hyperlinks: bool = False) -> str:
     listings = sort_listings(result.listings)
     if not listings:
         lines = ["No matching internships found."]
@@ -118,9 +124,12 @@ def format_table(result: ScanResult) -> str:
     rows = [_row(listing) for listing in listings]
     widths = [max(_display_width(row[i]) for row in [header, *rows]) for i in range(4)]
     lines = []
-    for row in [header, *rows]:
+    for index, row in enumerate([header, *rows]):
         padded = [_pad(row[i], widths[i]) for i in range(4)]
-        lines.append("  ".join([*padded, row[4]]).rstrip())
+        url = row[4]
+        if hyperlinks and index > 0:  # never wrap the header
+            url = _hyperlink(url)
+        lines.append("  ".join([*padded, url]).rstrip())
     lines.append("")
     lines.append(summary_line(result))
     return "\n".join(lines)

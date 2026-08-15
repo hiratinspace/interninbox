@@ -78,3 +78,47 @@ def test_text_from_html_plain_and_escaped() -> None:
     assert "citizenship is required" in text_from_html(escaped, escaped=True)
     # entities inside text decode either way
     assert "R&D" in text_from_html("<p>R&amp;D intern</p>")
+
+
+# Requirement vs mention: a hedged or negated signal must never disqualify.
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Security clearance preferred but not required.",
+        "Ability to obtain a security clearance is a plus.",
+        "A clearance is nice to have for this role.",
+        "No security clearance required.",
+        "No sponsorship required to apply.",
+        "Visa sponsorship is not required for this position.",
+    ],
+)
+def test_hedged_or_negated_signals_stay_unknown(text: str) -> None:
+    assert classify_sponsorship(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "An active security clearance is required.",
+        "Candidates must hold a TS/SCI security clearance.",
+        "This position requires an active security clearance.",
+        "This role is subject to ITAR and requires US person status.",
+    ],
+)
+def test_genuine_clearance_requirements_still_classify(text: str) -> None:
+    assert classify_sponsorship(text) == CITIZENSHIP_REQUIRED
+
+
+def test_signals_are_scoped_to_their_sentence() -> None:
+    # A hedge in one sentence must not soften a requirement in another.
+    text = "Flexible hours preferred. U.S. citizenship is required."
+    assert classify_sponsorship(text) == CITIZENSHIP_REQUIRED
+    # And a requirement word elsewhere must not harden a hedged clearance.
+    text = "A security clearance is a plus. A degree is required."
+    assert classify_sponsorship(text) is None
+
+
+def test_sponsorship_excluded_for_interns_is_negative() -> None:
+    text = "Visa sponsorship is available for full-time roles but not for interns."
+    assert classify_sponsorship(text) == NO_SPONSORSHIP

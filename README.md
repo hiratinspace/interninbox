@@ -28,9 +28,9 @@ plaid     Data Science Intern                     San Francisco   -           ht
 
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
-board APIs of **Greenhouse**, **Lever**, and **Ashby** (the same endpoints each
-company's own careers page calls). It can also read the official **USAJOBS**
-API for federal Pathways internships.
+board APIs of **Greenhouse**, **Lever**, **Ashby**, and **SmartRecruiters**
+(the same endpoints each company's own careers page calls). It can also read
+the official **USAJOBS** API for federal Pathways internships.
 
 ## Why interninbox
 
@@ -49,6 +49,7 @@ API for federal Pathways internships.
 ```sh
 pipx install interninbox      # recommended: isolated, on your PATH
 uv tool install interninbox   # or with uv
+uvx interninbox scan          # or zero-install, run it straight from PyPI
 ```
 
 Requires **Python 3.11+**. Installing straight from git works too
@@ -106,6 +107,7 @@ your last scan.
 | `interninbox init` | Write a starter `interninbox.toml` (refuses to overwrite) |
 | `interninbox companies` | Print the curated [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
 | `interninbox roles` | Print the [role presets](#role-presets) and the exact keywords each expands to |
+| `interninbox find-board NAME` | Probe the supported ATSes for a company's board slug and print ready-to-paste `"ats:slug"` lines |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -118,17 +120,19 @@ your last scan.
 | `--new-only` | Show only listings not seen by a previous scan |
 | `--state PATH` | Use a state file other than the one derived from the config name |
 | `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them: a one-shot override of `locations`, `roles`, and `registry` that leaves everything else untouched |
+| `--since WINDOW` | Show only listings posted within the window (`7d`, `36h`, `2w`); undated listings are kept |
 | `--quiet`, `-q` | Suppress the banner and per-company progress lines |
 
-An interactive scan opens with the wordmark ("intern" in white, "inbox" in
-blue), then prints per-company progress:
+An interactive scan opens with the block wordmark ("intern" in white,
+"inbox" in blue, matching the logo), then prints per-company progress:
 
 ```text
-    _       __                      _       __
-   (_)___  / /____  _________      (_)___  / /_  ____  _  __
-  / / __ \/ __/ _ \/ ___/ __ \    / / __ \/ __ \/ __ \| |/_/
- / / / / / /_/  __/ /  / / / /   / / / / / /_/ / /_/ />  <
-/_/_/ /_/\__/\___/_/  /_/ /_/   /_/_/ /_/_.___/\____/_/|_|
+██        ██                            ██        ██
+          ██                                      ██
+██ ██████ ██▀▀▀▀ ██████ ██▀▀██ ██████   ██ ██████ ██████ ██████ ██  ██
+██ ██  ██ ██     ██▄▄██ ██     ██  ██   ██ ██  ██ ██  ██ ██  ██  ▀██▀
+██ ██  ██ ██     ██     ██     ██  ██   ██ ██  ██ ██  ██ ██  ██  ▄██▄
+██ ██  ██  ▀████ ██████ ██     ██  ██   ██ ██  ██ ██████ ██████ ██  ██
 
   > find internships. in the terminal.
 ```
@@ -136,7 +140,8 @@ blue), then prints per-company progress:
 It goes to `stderr` (never `stdout`), so piped `--json` / `--markdown` output
 stays clean. It appears only on a real terminal, honors `NO_COLOR`, uses a
 theme-proof 256-color blue, and vanishes under pipes, redirects, and cron.
-Pass `--quiet` to silence it (and the progress lines) anywhere.
+Pass `--quiet` to silence it (and the progress lines) anywhere. On a real
+terminal, each result's URL is a clickable OSC 8 hyperlink.
 
 Exit codes: `0` on success (a single company that fails prints a one-line
 warning and never aborts the scan); `1` when the config is invalid or every
@@ -228,10 +233,13 @@ Open a company's careers page and read the URL of an actual job listing:
 | `job-boards.greenhouse.io/acme/...` | `"greenhouse:acme"` |
 | `jobs.lever.co/acme/...` | `"lever:acme"` |
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
+| `jobs.smartrecruiters.com/AcmeCorp/...` | `"smartrecruiters:AcmeCorp"` |
 
-If a scan reports `HTTP 404 from <host>: check the slug exists`, the slug is
-wrong or the company changed ATS providers. `interninbox companies` lists the
-full registry of known-good entries to start from.
+Or let the tool guess: `interninbox find-board "Acme Corp"` probes all four
+ATSes with the obvious slug candidates and prints whatever answers. If a scan
+reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or
+the company changed ATS providers. `interninbox companies` lists the full
+registry of known-good entries to start from.
 
 ## How matching works
 
@@ -347,10 +355,15 @@ degrees = ["Bachelor's"]
   metadata and from the job description itself: Lever and Ashby include
   descriptions in their normal responses, and Greenhouse descriptions are
   fetched (only when this filter is on, since they inflate each board fetch).
-  Phrases like "unable to sponsor", "must not require sponsorship", "US
-  citizenship is required", security-clearance and ITAR requirements are
-  classified conservatively; a listing that says nothing is **always kept**,
-  never guessed about. USAJOBS listings count as citizenship-restricted.
+  Classification is requirement-aware and sentence-scoped: "unable to
+  sponsor", "must not require sponsorship", "US citizenship is required", and
+  clearance/ITAR *requirements* disqualify, while hedged mentions ("clearance
+  preferred", "no sponsorship required") never do. A listing that says
+  nothing is **always kept**. USAJOBS listings count as citizenship-restricted
+  (federal Pathways positions are citizenship-limited). SmartRecruiters
+  postings carry no descriptions in the list API, so they stay unknown and
+  are always kept; the phrase lists are English-only, so non-English boards
+  also stay unknown.
 - **`terms`** keeps only the seasons you want, read from list metadata or
   the title ("... Intern (Summer 2027)"). Unknown seasons pass.
 - **`degrees`** keeps only listings open to your level (list-source entries
@@ -425,9 +438,10 @@ you run it, you own your data, and nothing phones home.
 
 ## FAQ
 
-**Why only Greenhouse, Lever, and Ashby?** They expose documented public board
-APIs designed for exactly this. More sources may come; PRs welcome if the
-source has a documented public API.
+**Why these ATSes?** Greenhouse, Lever, Ashby, and SmartRecruiters expose
+documented public board APIs designed for exactly this, and the community
+list covers employers on everything else. PRs welcome for any source with a
+documented public API.
 
 **Does it store or send my data anywhere?** No. The only writes are your config
 and the local state file. There is no telemetry of any kind.

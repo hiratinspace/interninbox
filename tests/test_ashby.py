@@ -61,3 +61,17 @@ def test_description_html_is_classified_and_terms_derived() -> None:
     by_title = {listing.title: listing for listing in listings}
     assert by_title["Platform Engineering Intern (Fall)"].sponsorship == "offers-sponsorship"
     assert by_title["Design Intern"].sponsorship is None
+
+
+def test_fetch_allows_description_heavy_boards() -> None:
+    from interninbox.fetch import Fetcher
+
+    # Ashby always ships descriptionHtml, so big boards exceed the default
+    # cap (OpenAI did, live). The adapter must request a wider budget.
+    def handler(request):
+        return json_response(load_fixture("ashby/harborline.json"))
+
+    with Fetcher(
+        transport=make_transport(handler), sleep=lambda _: None, max_response_bytes=64
+    ) as fetcher:
+        assert ashby.fetch(fetcher, "harborline")  # tiny instance cap overridden

@@ -20,16 +20,38 @@ OFFERS_SPONSORSHIP = "offers-sponsorship"
 NO_SPONSORSHIP = "no-sponsorship"
 CITIZENSHIP_REQUIRED = "citizenship-required"
 
-# Phrases are matched case-insensitively with flexible whitespace. Keep them
-# specific: a false "does not sponsor" hides a real opportunity.
-_CITIZENSHIP_PATTERNS = (
+# Phrases are matched case-insensitively with flexible whitespace, and
+# classification is scoped to sentences: a REQUIREMENT in one sentence is
+# never softened by a hedge in another, and a mere mention ("clearance is a
+# plus") never disqualifies. Keep patterns specific: a false "does not
+# sponsor" hides a real opportunity.
+
+# Self-contained requirement phrases: the requirement is in the phrase itself.
+_CITIZENSHIP_STRONG_PATTERNS = (
     r"u\.?s\.?\s+citizenship\s+is\s+required",
     r"citizenship\s+(?:is\s+)?required",
     r"requires?\s+u\.?s\.?\s+citizenship",
     r"must\s+be\s+an?\s+u\.?s\.?\s+citizen",
     r"u\.?s\.?\s+citizens?\s+only",
+)
+# Weak signals: only a requirement when their sentence says so.
+_CITIZENSHIP_WEAK_PATTERNS = (
     r"security\s+clearance",
     r"\bitar\b",
+)
+_REQUIREMENT_MARKERS = (
+    r"\b(?:required|requires?|must|mandatory|active|necessary|subject\s+to)\b"
+)
+# Hedges: the sentence explicitly softens or negates the signal.
+_HEDGE_PATTERNS = (
+    r"\bpreferred\b",
+    r"\ba\s+plus\b",
+    r"\bnice\s+to\s+have\b",
+    r"\bdesir(?:ed|able)\b",
+    r"\bbonus\b",
+    r"\badvantageous\b",
+    r"\bnot\s+required\b",
+    r"\bno\b[^.!?;]{0,60}\brequired\b",
 )
 _NEGATIVE_PATTERNS = (
     r"unable\s+to\s+sponsor",
@@ -39,7 +61,9 @@ _NEGATIVE_PATTERNS = (
     r"will\s+not\s+sponsor",
     r"do(?:es)?\s+not\s+sponsor",
     r"do(?:es)?\s+not\s+offer\s+(?:visa\s+)?sponsorship",
-    r"no\s+(?:visa\s+|employment\s+)?sponsorship",
+    # "no sponsorship available", but never "no sponsorship required/needed".
+    r"no\s+(?:visa\s+|employment\s+)?sponsorship"
+    r"(?!\s+(?:is\s+)?(?:required|needed|necessary))",
     r"sponsorship\s+is\s+not\s+available",
     r"not\s+eligible\s+for\s+(?:visa\s+)?sponsorship",
     r"without\s+(?:visa\s+)?sponsorship",
@@ -52,24 +76,51 @@ _POSITIVE_PATTERNS = (
     r"provides?\s+(?:visa\s+)?sponsorship",
     r"offers?\s+(?:visa\s+)?sponsorship",
 )
+# "sponsorship ... but not for interns": an offer that excludes this audience.
+_NOT_FOR_INTERNS = re.compile(r"\bnot\s+(?:available\s+)?for\s+intern", re.IGNORECASE)
 
-_CITIZENSHIP = re.compile("|".join(_CITIZENSHIP_PATTERNS), re.IGNORECASE)
+_CITIZENSHIP_STRONG = re.compile("|".join(_CITIZENSHIP_STRONG_PATTERNS), re.IGNORECASE)
+_CITIZENSHIP_WEAK = re.compile("|".join(_CITIZENSHIP_WEAK_PATTERNS), re.IGNORECASE)
+_REQUIREMENT = re.compile(_REQUIREMENT_MARKERS, re.IGNORECASE)
+_HEDGE = re.compile("|".join(_HEDGE_PATTERNS), re.IGNORECASE)
 _NEGATIVE = re.compile("|".join(_NEGATIVE_PATTERNS), re.IGNORECASE)
 _POSITIVE = re.compile("|".join(_POSITIVE_PATTERNS), re.IGNORECASE)
+_SENTENCE = re.compile(r"(?<=[.!?;])\s+|\n+")
 
 _TERM = re.compile(r"\b(spring|summer|fall|autumn|winter)\s+(20\d{2})\b", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")
 
 
 def classify_sponsorship(text: str) -> str | None:
-    """The sponsorship signal in `text`, or None when it says nothing."""
+    """The sponsorship signal in `text`, or None when it says nothing.
+
+    Sentence-scoped, requirement-vs-mention aware: hedged signals
+    ("clearance preferred", "no sponsorship required") never disqualify.
+    Across sentences, the most restrictive confirmed signal wins.
+    """
     if not text:
         return None
-    if _CITIZENSHIP.search(text):
-        return CITIZENSHIP_REQUIRED
-    if _NEGATIVE.search(text):
+    found_negative = False
+    found_positive = False
+    for sentence in _SENTENCE.split(text):
+        if not sentence.strip():
+            continue
+        hedged = bool(_HEDGE.search(sentence))
+        if not hedged:
+            if _CITIZENSHIP_STRONG.search(sentence):
+                return CITIZENSHIP_REQUIRED
+            if _CITIZENSHIP_WEAK.search(sentence) and _REQUIREMENT.search(sentence):
+                return CITIZENSHIP_REQUIRED
+        if _NEGATIVE.search(sentence) and not (hedged and not _POSITIVE.search(sentence)):
+            found_negative = True
+        if _POSITIVE.search(sentence):
+            if _NOT_FOR_INTERNS.search(sentence):
+                found_negative = True
+            else:
+                found_positive = True
+    if found_negative:
         return NO_SPONSORSHIP
-    if _POSITIVE.search(text):
+    if found_positive:
         return OFFERS_SPONSORSHIP
     return None
 

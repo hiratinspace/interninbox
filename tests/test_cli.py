@@ -331,9 +331,11 @@ def test_banner_shown_on_interactive_scan(
         sleep=lambda _: None,
         env={},  # no NO_COLOR
     )
+    import re
+
     err = capsys.readouterr().err
     assert code == 0
-    assert _BANNER_TAGLINE in err
+    assert _BANNER_TAGLINE in re.sub(r"\x1b\[[0-9;]*m", "", err)  # present once unstyled
     assert "\x1b[" in err  # colored on a tty without NO_COLOR
 
 
@@ -593,7 +595,7 @@ def test_interactive_scan_without_config_runs_and_offers_save(
     )
     monkeypatch.chdir(tmp_path)
     # location blank, roles blank, companies -> [1] all, save? -> y
-    scripted = iter(["", "", "1", "y"])
+    scripted = iter(["", "", "1", "", "", "y"])
     code = main(
         ["scan", "--interactive"],
         transport=make_transport(route),
@@ -617,7 +619,7 @@ def test_interactive_save_declined_writes_nothing(
         (RegistryCompany("ashby", "harborline", "Harborline", "startup", (), top=True),),
     )
     monkeypatch.chdir(tmp_path)
-    scripted = iter(["", "", "1", "n"])
+    scripted = iter(["", "", "1", "", "", "n"])
     code = main(
         ["scan", "--interactive"],
         transport=make_transport(route),
@@ -727,3 +729,114 @@ def test_successful_source_prevents_all_failed_exit(
     captured = capsys.readouterr()
     assert code == 0  # the list delivered results; not a total failure
     assert "Quantum Software Intern" in captured.out
+
+
+def test_smartrecruiters_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def sr_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response(load_fixture("smartrecruiters/meridian.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["smartrecruiters:MeridianPay"]\n')
+    code = main(["scan", "--config", str(config)], transport=make_transport(sr_route), **NO_SLEEP)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Payments Software Intern (Summer 2027)" in out
+    assert "Risk Analytics Intern" in out
+    assert "Senior Treasury Manager" not in out  # staff filter still applies
+    assert "jobs.smartrecruiters.com/MeridianPay/744000900000001" in out
+
+
+def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:
+            return json_response({"jobs": []})
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response({"totalFound": 0, "content": []})
+        return httpx.Response(404)
+
+    code = main(["find-board", "Acme"], transport=make_transport(handler), **NO_SLEEP)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert '"greenhouse:acme"' in out  # ready to paste into the config
+
+
+def test_find_board_none_found_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def nothing(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response({"totalFound": 0, "content": []})
+        return httpx.Response(404)
+
+    code = main(["find-board", "Ghost"], transport=make_transport(nothing), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "careers page" in captured.err  # points at the manual method
+
+
+def test_since_flag_accepted_and_bad_value_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    code = main(
+        ["scan", "--config", str(config), "--since", "500w"],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    assert code == 0  # generous window keeps the fixture listings
+    assert "Platform Engineering Intern (Fall)" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["scan", "--config", str(config), "--since", "banana"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2  # argparse rejects it with a usage message
+    assert "like 7d" in capsys.readouterr().err
+
+
+def test_dedupe_merges_board_and_list_versions() -> None:
+    from conftest import make_listing
+
+    from interninbox.cli import _dedupe_listings
+
+    board = make_listing(
+        listing_id="gh1",
+        url="https://Jobs.Example.test/acme/123?utm_source=simplify",
+        sponsorship=None,
+    )
+    listed = make_listing(
+        listing_id="uuid-1",
+        source="simplify",
+        url="https://jobs.example.test/acme/123/",
+        sponsorship="offers-sponsorship",
+        degrees=("Bachelor's",),
+        curated=True,
+    )
+    other = make_listing(listing_id="gh2", url="https://jobs.example.test/acme/999")
+
+    deduped = _dedupe_listings([board, listed, other])
+    assert len(deduped) == 2  # board+list collapse; the third survives
+    kept = deduped[0]
+    assert kept.listing_id == "gh1"  # the direct board version wins...
+    assert kept.sponsorship == "offers-sponsorship"  # ...but inherits list metadata
+    assert kept.degrees == ("Bachelor's",)
+
+
+def test_board_plus_list_overlap_shows_one_row(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nsources = ["simplify"]\n')
+    code = main(
+        ["scan", "--config", str(config), "--json"], transport=make_transport(route), **NO_SLEEP
+    )
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    design = [item for item in payload["listings"] if item["title"] == "Design Intern"]
+    assert len(design) == 1  # the list duplicate collapsed into the board row
+    assert design[0]["source"] == "ashby"
+    assert design[0]["sponsorship"] == "offers-sponsorship"  # inherited from the list

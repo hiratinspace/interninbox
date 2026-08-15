@@ -116,13 +116,45 @@ class Fetcher:
         the instance cap for known-large legitimate payloads (community list
         files, description-laden boards).
         """
+        payload, _etag = self.get_json_conditional(
+            url,
+            etag=None,
+            params=params,
+            headers=headers,
+            follow_redirects=follow_redirects,
+            max_response_bytes=max_response_bytes,
+        )
+        return payload
+
+    def get_json_conditional(
+        self,
+        url: str,
+        *,
+        etag: str | None,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        follow_redirects: bool = True,
+        max_response_bytes: int | None = None,
+    ) -> tuple[object, str | None]:
+        """Conditional GET: (payload, response ETag), or (None, etag) on 304.
+
+        Passing the previously seen `etag` sends If-None-Match; a 304 answer
+        means the caller's cached copy is still current, sparing the transfer.
+        """
         host = urllib.parse.urlsplit(url).netloc
+        request_headers = dict(headers or {})
+        if etag:
+            request_headers["If-None-Match"] = etag
         last_error: str = "unknown error"
         for _attempt in (1, 2):
             self._wait_for_host(host)
             try:
                 with self._client.stream(
-                    "GET", url, params=params, headers=headers, follow_redirects=follow_redirects
+                    "GET",
+                    url,
+                    params=params,
+                    headers=request_headers or None,
+                    follow_redirects=follow_redirects,
                 ) as response:
                     if response.status_code >= 500:
                         last_error = f"server error HTTP {response.status_code}"
@@ -131,17 +163,20 @@ class Fetcher:
                         self._sleep(_retry_after_seconds(response.headers.get("Retry-After")))
                         last_error = f"HTTP 429 from {host} (rate limited)"
                         continue  # one polite retry, then _client_error below reports it
+                    if response.status_code == 304 and etag:
+                        return None, etag
                     if response.status_code >= 400:
                         raise AdapterError(_client_error(response.status_code, host))
                     if response.status_code >= 300:
                         raise AdapterError(
                             f"unexpected redirect (HTTP {response.status_code}) from {host}"
                         )
+                    response_etag = response.headers.get("ETag")
                     body = self._read_limited(response, host, max_response_bytes)
             except httpx.HTTPError as exc:
                 last_error = f"network error: {exc}"
                 continue  # transient, retry once
-            return _parse_json(body, host)
+            return _parse_json(body, host), response_etag
         raise AdapterError(f"{last_error} (after retry)")
 
     def _read_limited(

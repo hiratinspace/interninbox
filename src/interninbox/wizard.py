@@ -20,6 +20,8 @@ class WizardAnswers:
     locations: tuple[str, ...]
     roles: tuple[str, ...]
     tier: str  # a registry tier, or "config" for the user's own list
+    include_list: bool = True  # also scan the Simplify community list
+    require_sponsorship: bool = False
 
 
 def run(
@@ -51,7 +53,29 @@ def run(
         print_fn(f"  [{index}] {line}")
     tier = _pick_one(input_fn, print_fn, options, start=start)
 
-    return WizardAnswers(locations=locations, roles=tuple(roles), tier=tier)
+    include_list = _yes_no(
+        input_fn("Also scan the community internship list (Simplify)? [Y/n] "),
+        default=True,
+    )
+    require_sponsorship = _yes_no(
+        input_fn("Only show roles that can sponsor a work visa? [y/N] "),
+        default=False,
+    )
+
+    return WizardAnswers(
+        locations=locations,
+        roles=tuple(roles),
+        tier=tier,
+        include_list=include_list,
+        require_sponsorship=require_sponsorship,
+    )
+
+
+def _yes_no(raw: str, *, default: bool) -> bool:
+    answer = raw.strip().lower()
+    if not answer:
+        return default
+    return answer in ("y", "yes")
 
 
 def _pick_many(raw: str, names: list[str]) -> list[str]:
@@ -84,13 +108,17 @@ def render_config(answers: WizardAnswers) -> str:
         return "[" + ", ".join(f'"{item}"' for item in items) + "]"
 
     tier = answers.tier if answers.tier in TIERS else "none"
+    sources = toml_list(("simplify",) if answers.include_list else ())
+    sponsorship = "true" if answers.require_sponsorship else "false"
     return (
         "# Written by the interninbox wizard. Edit freely; `interninbox scan`\n"
         "# uses it from now on (rerun the wizard any time with --interactive).\n"
         "companies = []\n"
         f'registry = "{tier}"\n'
+        f"sources = {sources}\n"
         "\n"
         "[filters]\n"
         f"roles = {toml_list(answers.roles)}\n"
         f"locations = {toml_list(answers.locations)}\n"
+        f"require_sponsorship = {sponsorship}\n"
     )

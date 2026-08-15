@@ -42,13 +42,30 @@ def select(tier: str) -> tuple[RegistryCompany, ...]:
 
 def estimate_label(count: int) -> str:
     """Human 'how long will this take' hint. Rough on purpose; network varies."""
-    seconds = max(5, round(count * _SECONDS_PER_BOARD))
+    return _label(max(5, round(count * _SECONDS_PER_BOARD)))
+
+
+def estimate_seconds(companies: object) -> int:
+    """Request-weighted estimate: an enterprise SmartRecruiters board can take
+    up to 10 paginated requests, not 1."""
+    total = 0.0
+    for company in companies:  # any object with an .ats attribute
+        weight = 10 if getattr(company, "ats", "") == "smartrecruiters" else 1
+        total += weight * _SECONDS_PER_BOARD
+    return max(5, round(total))
+
+
+def estimate_label_for(companies: object) -> str:
+    return _label(estimate_seconds(companies))
+
+
+def _label(seconds: int) -> str:
     if seconds < 90:
         return f"~{seconds} s"
     return f"~{max(2, round(seconds / 60))} min"
 
 
-_G, _L, _A = "greenhouse", "lever", "ashby"
+_G, _L, _A, _S = "greenhouse", "lever", "ashby", "smartrecruiters"
 
 REGISTRY: tuple[RegistryCompany, ...] = (
     # ---- greenhouse, large ----
@@ -158,4 +175,11 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_A, "baseten", "Baseten", "startup", ("ai", "infra")),
     RegistryCompany(_A, "railway", "Railway", "startup", ("devtools",)),
     RegistryCompany(_A, "decagon", "Decagon", "startup", ("ai",)),
+    # ---- smartrecruiters (enterprise) ----
+    RegistryCompany(_S, "BoschGroup", "Bosch", "large", ("hardware",), top=True),
+    RegistryCompany(_S, "ServiceNow", "ServiceNow", "large", ("infra",), top=True),
+    RegistryCompany(_S, "Ubisoft2", "Ubisoft", "large", ("gaming",)),
+    RegistryCompany(_S, "Visa", "Visa", "large", ("fintech",), top=True),
+    RegistryCompany(_S, "McDonaldsCorporation", "McDonald's", "large", ("consumer",)),
+    RegistryCompany(_S, "Experian", "Experian", "large", ("fintech",)),
 )

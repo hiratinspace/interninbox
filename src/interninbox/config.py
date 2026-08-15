@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-KNOWN_ATS = ("greenhouse", "lever", "ashby")
+KNOWN_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters")
 
 DEFAULT_CONFIG_NAME = "interninbox.toml"
 
@@ -198,11 +198,11 @@ def load_config(path: Path) -> Config:
         )
 
     sources = _string_list(data.get("sources"), where="sources")
-    from interninbox.sources import KNOWN_SOURCES
+    from interninbox.sources import is_known_source, known_source_names
 
     for source in sources:
-        if source not in KNOWN_SOURCES:
-            valid = ", ".join(sorted(KNOWN_SOURCES))
+        if not is_known_source(source):
+            valid = ", ".join(known_source_names())
             raise ConfigError(f"unknown source {source!r}; valid sources: {valid}")
 
     if not companies and not usajobs_cfg.enabled and registry == "none" and not sources:
@@ -230,6 +230,8 @@ STARTER_CONFIG = """\
 #   job-boards.greenhouse.io/<slug>  ->  "greenhouse:<slug>"
 #   jobs.lever.co/<slug>             ->  "lever:<slug>"
 #   jobs.ashbyhq.com/<slug>          ->  "ashby:<slug>"
+#   jobs.smartrecruiters.com/<slug>  ->  "smartrecruiters:<slug>"
+# Or let `interninbox find-board "Acme Corp"` guess the slug for you.
 # `interninbox companies` prints a starter list of well-known companies.
 companies = [
     "greenhouse:stripe",

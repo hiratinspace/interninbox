@@ -7,6 +7,7 @@ import dataclasses
 import os
 import sys
 import time
+import urllib.parse
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -27,14 +28,29 @@ from interninbox.config import (
 )
 from interninbox.fetch import Fetcher
 from interninbox.filters import matches
+from interninbox.freshness import apply_since, parse_since
 from interninbox.locations import expand_location_terms
-from interninbox.models import AdapterError, ScanResult
+from interninbox.models import AdapterError, Listing, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
 from interninbox.roles import expand_roles
 from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
 
 
 def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console script
+    # Legacy Windows consoles need virtual-terminal mode switched on before
+    # ANSI (banner colors, OSC 8 links) renders instead of printing escapes.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            for handle_id in (-11, -12):  # stdout, stderr
+                handle = kernel32.GetStdHandle(handle_id)
+                mode = ctypes.c_uint32()
+                if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                    kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+        except Exception:
+            pass  # cosmetic only; never block the scan
     # A console that cannot encode a title (Windows legacy codepages under
     # redirection) degrades characters instead of crashing the whole scan.
     for stream in (sys.stdout, sys.stderr):
@@ -51,6 +67,14 @@ def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console scr
         os.dup2(devnull, sys.stdout.fileno())
         code = 0
     sys.exit(code)
+
+
+def _since_arg(text: str) -> object:
+    """argparse adapter: surface parse_since's friendly message on bad input."""
+    try:
+        return parse_since(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -96,6 +120,14 @@ def build_parser() -> argparse.ArgumentParser:
         "(automatic on a terminal when no config exists)",
     )
     scan_parser.add_argument(
+        "--since",
+        type=_since_arg,
+        default=None,
+        metavar="WINDOW",
+        help="show only listings posted within this window (7d, 36h, 2w); "
+        "undated listings are kept",
+    )
+    scan_parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
@@ -110,6 +142,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     roles_parser = subparsers.add_parser("roles", help="print the role presets")
     roles_parser.set_defaults(func=_cmd_roles)
+
+    find_parser = subparsers.add_parser(
+        "find-board", help="probe the supported ATSes for a company's board slug"
+    )
+    find_parser.add_argument("name", help='company name, e.g. "Acme Corp"')
+    find_parser.set_defaults(func=_cmd_find_board)
 
     return parser
 
@@ -170,6 +208,32 @@ def _cmd_roles(args: argparse.Namespace, **_: object) -> int:
     return 0
 
 
+def _cmd_find_board(
+    args: argparse.Namespace,
+    *,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
+    **_: object,
+) -> int:
+    from interninbox.discover import find_boards
+
+    with Fetcher(transport=transport, sleep=sleep) as fetcher:
+        found = find_boards(fetcher, args.name)
+    if not found:
+        print(
+            f"no board found for {args.name!r} on the supported ATSes. The slug may "
+            "be unusual: open the company's careers page and read the URL "
+            "(job-boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, "
+            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>).",
+            file=sys.stderr,
+        )
+        return 1
+    print("# add to interninbox.toml under companies = [...]")
+    for label in found:
+        print(f'"{label}",')
+    return 0
+
+
 def _effective_filters(config: Config) -> Filters:
     """Scan-time filter view: aliases expanded, role presets merged in."""
     role_keywords = expand_roles(config.filters.roles)
@@ -195,6 +259,42 @@ def _effective_companies(config: Config) -> tuple[Company, ...]:
                 listed.add(company.label)
                 companies.append(company)
     return tuple(companies)
+
+
+def _normalize_url(url: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    host = parts.netloc.lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}"
+
+
+def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
+    """Collapse the same posting seen via a board AND a community list.
+
+    The direct board version wins (fresher title and locations), but inherits
+    any eligibility metadata only the list knew (sponsorship, terms, degrees).
+    Order-preserving; first occurrence keeps its position.
+    """
+    by_url: dict[str, int] = {}
+    kept: list[Listing] = []
+    for listing in listings:
+        key = _normalize_url(listing.url)
+        index = by_url.get(key)
+        if index is None:
+            by_url[key] = len(kept)
+            kept.append(listing)
+            continue
+        existing = kept[index]
+        base, extra = (
+            (existing, listing) if listing.curated or not existing.curated
+            else (listing, existing)
+        )
+        kept[index] = dataclasses.replace(
+            base,
+            sponsorship=base.sponsorship or extra.sponsorship,
+            terms=base.terms or extra.terms,
+            degrees=base.degrees or extra.degrees,
+        )
+    return kept
 
 
 def _cmd_scan(
@@ -230,9 +330,13 @@ def _cmd_scan(
         config = dataclasses.replace(
             base,
             filters=dataclasses.replace(
-                base.filters, locations=answers.locations, roles=answers.roles
+                base.filters,
+                locations=answers.locations,
+                roles=answers.roles,
+                require_sponsorship=answers.require_sponsorship,
             ),
             registry=base.registry if answers.tier == "config" else answers.tier,
+            sources=("simplify",) if answers.include_list else base.sources,
         )
     else:
         config = load_config(args.config)
@@ -242,15 +346,17 @@ def _cmd_scan(
         print(f"warning: {state.warning}", file=sys.stderr)
 
     companies = _effective_companies(config)
+    filters = _effective_filters(config)
     if len(companies) >= 20:
-        print(
+        note = (
             f"scanning {len(companies)} boards, roughly "
-            f"{registry_mod.estimate_label(len(companies))} at polite pacing",
-            file=sys.stderr,
+            f"{registry_mod.estimate_label_for(companies)} at polite pacing"
         )
+        if filters.require_sponsorship:
+            note += " (downloading descriptions for the sponsorship filter)"
+        print(note, file=sys.stderr)
 
     progress = sys.stderr.isatty() and not args.quiet
-    filters = _effective_filters(config)
     result = ScanResult()
     with Fetcher(transport=transport, sleep=sleep) as fetcher:
         # Descriptions are only worth fetching when a filter reads them.
@@ -260,8 +366,11 @@ def _cmd_scan(
         _scan_usajobs(config, fetcher, env, result, progress=progress)
         _scan_sources(config, fetcher, result, progress=progress)
 
+    result.listings = _dedupe_listings(result.listings)
     result.listings_checked = len(result.listings)
     matched = [listing for listing in result.listings if matches(listing, filters)]
+    if args.since is not None:
+        matched = apply_since(matched, args.since)
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
     # Record EVERYTHING fetched, flag or not, so "new" means "never fetched
@@ -283,7 +392,8 @@ def _cmd_scan(
     elif args.markdown:
         print(format_markdown(result))
     else:
-        print(format_table(result))
+        hyperlinks = sys.stdout.isatty() and not env.get("NO_COLOR")
+        print(format_table(result, hyperlinks=hyperlinks))
 
     if answers is not None and not args.config.is_file() and answers.tier != "config":
         ask = input_fn if input_fn is not None else input
@@ -314,7 +424,9 @@ def _scan_boards(
             print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
         adapter_fetch = ADAPTERS[company.ats]
         try:
-            listings = adapter_fetch(fetcher, company.slug, content=content)
+            listings = adapter_fetch(
+                fetcher, company.slug, content=content, warn=result.warnings.append
+            )
         except AdapterError as exc:
             result.companies_failed += 1
             result.warnings.append(f"{company.label}: {exc}")
@@ -330,7 +442,7 @@ def _scan_sources(
         if progress:
             print(f"[source] {name} ...", file=sys.stderr, flush=True)
         try:
-            listings = sources_mod.fetch_source(fetcher, name)
+            listings = sources_mod.fetch_source(fetcher, name, warn=result.warnings.append)
         except AdapterError as exc:
             result.companies_failed += 1
             result.warnings.append(f"source {name}: {exc}")

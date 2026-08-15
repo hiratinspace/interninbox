@@ -16,6 +16,7 @@ Field notes:
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 
 from interninbox import eligibility
 from interninbox.fetch import Fetcher
@@ -23,13 +24,25 @@ from interninbox.models import AdapterError, Listing
 
 BASE_URL = "https://api.lever.co/v0/postings/{slug}"
 
+# Descriptions ride along in every response, so big boards routinely
+# exceed the default cap (OpenAI's Ashby board did, live).
+BOARD_MAX_BYTES = 30_000_000
+
 SOURCE = "lever"
 
 
-def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+def fetch(
+    fetcher: Fetcher,
+    slug: str,
+    *,
+    content: bool = False,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Listing]:
     # `content` is accepted for adapter-signature uniformity; Lever includes
     # descriptions in every response, so classification is always on.
-    payload = fetcher.get_json(BASE_URL.format(slug=slug), params={"mode": "json"})
+    payload = fetcher.get_json(
+        BASE_URL.format(slug=slug), params={"mode": "json"}, max_response_bytes=BOARD_MAX_BYTES
+    )
     return parse(payload, slug)
 
 
