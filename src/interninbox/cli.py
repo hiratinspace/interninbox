@@ -147,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("name", help='company name, e.g. "Acme Corp"')
     find_parser.set_defaults(func=_cmd_find_board)
 
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="serve the scanner to AI agents over MCP (JSON-RPC on stdin/stdout)",
+    )
+    mcp_parser.set_defaults(func=_cmd_mcp)
+
     return parser
 
 
@@ -229,6 +235,34 @@ def _cmd_find_board(
     print("# add to interninbox.toml under companies = [...]")
     for label in found:
         print(f'"{label}",')
+    return 0
+
+
+def _cmd_mcp(
+    args: argparse.Namespace,
+    *,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
+    env: Mapping[str, str],
+    **_: object,
+) -> int:
+    """Speak MCP over stdio: stdin lines in, JSON-RPC lines out, nothing else.
+
+    stdout carries only protocol lines (no banner, flushed per line so the
+    client never waits on a buffer) and stderr stays silent. EOF ends the
+    loop with 0; Ctrl-C exits quietly with 130, without the "interrupted"
+    note an interactive scan prints (an MCP client owns this process, and
+    noise on shutdown would only alarm it).
+    """
+    from interninbox import mcp
+
+    def write_line(text: str) -> None:
+        print(text, flush=True)
+
+    try:
+        mcp.serve(sys.stdin.readline, write_line, transport=transport, sleep=sleep, env=env)
+    except KeyboardInterrupt:
+        return 130
     return 0
 
 

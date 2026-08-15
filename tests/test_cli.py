@@ -1,5 +1,6 @@
 """End-to-end CLI tests through main() with an injected MockTransport."""
 
+import io
 import json
 import sys
 from pathlib import Path
@@ -842,3 +843,74 @@ def test_board_plus_list_overlap_shows_one_row(
     assert len(design) == 1  # the list duplicate collapsed into the board row
     assert design[0]["source"] == "ashby"
     assert design[0]["sponsorship"] == "offers-sponsorship"  # inherited from the list
+
+
+# --- the mcp subcommand -------------------------------------------------------
+
+
+def _feed_stdin(monkeypatch: pytest.MonkeyPatch, messages: list[dict]) -> None:
+    """Point sys.stdin at a stream of newline-delimited JSON-RPC messages."""
+    text = "".join(json.dumps(message) + "\n" for message in messages)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(text))
+
+
+def test_mcp_stdout_carries_only_protocol_lines(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)  # even on a terminal: no banner, silent stderr
+    _feed_stdin(monkeypatch, [
+        {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+            "protocolVersion": "2024-11-05", "capabilities": {},
+            "clientInfo": {"name": "test-client", "version": "0.0.1"},
+        }},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    ])
+    code = main(["mcp"], **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 0  # EOF ends the loop cleanly
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 2  # one response per request, nothing else on stdout
+    replies = [json.loads(line) for line in lines]
+    assert replies[0]["id"] == 0
+    assert replies[0]["result"]["serverInfo"]["name"] == "interninbox"
+    assert replies[1]["id"] == 1
+    tool_names = {tool["name"] for tool in replies[1]["result"]["tools"]}
+    assert tool_names == {"scan_internships", "list_role_presets", "find_board"}
+
+
+def test_mcp_scan_tool_uses_the_injected_transport(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _feed_stdin(monkeypatch, [
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+            "name": "scan_internships",
+            "arguments": {
+                "companies": ["ashby:harborline"], "registry": "none", "sources": [],
+            },
+        }},
+    ])
+    code = main(["mcp"], transport=make_transport(route), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.err == ""
+    reply = json.loads(captured.out.splitlines()[0])
+    payload = json.loads(reply["result"]["content"][0]["text"])
+    titles = [listing["title"] for listing in payload["listings"]]
+    assert "Platform Engineering Intern (Fall)" in titles
+
+
+def test_mcp_ctrl_c_exits_cleanly_and_silently(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class CtrlCStdin:
+        def readline(self) -> str:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(sys, "stdin", CtrlCStdin())
+    code = main(["mcp"], **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 130
+    assert captured.out == ""  # never a partial protocol line
+    assert captured.err == ""  # no "interrupted" noise for MCP clients

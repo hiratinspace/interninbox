@@ -42,6 +42,7 @@ the official **USAJOBS** API for federal Pathways internships.
 - 🏢 **100+ curated companies.** Big and small, every slug live-verified. Scan your own list, or sweep a whole tier of the registry.
 - 🧭 **First-run wizard.** No config? Answer three questions, get results, and optionally save them for next time.
 - 📬 **A personal feed.** `--new-only` shows just what appeared since your last scan; run it on a schedule and it becomes your morning internship digest.
+- 🤖 **Built for the AI era.** AI answers questions about internships; interninbox watches all of them. One command ([`interninbox mcp`](#use-interninbox-from-your-ai)) hands the whole scanner to Claude or any MCP-capable agent.
 - 🤝 **Polite by construction.** Sequential, rate-limited requests, an honest User-Agent, documented public APIs only. No scraping.
 
 ## Install
@@ -108,6 +109,7 @@ your last scan.
 | `interninbox companies` | Print the curated [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
 | `interninbox roles` | Print the [role presets](#role-presets) and the exact keywords each expands to |
 | `interninbox find-board NAME` | Probe the supported ATSes for a company's board slug and print ready-to-paste `"ats:slug"` lines |
+| `interninbox mcp` | Serve the scanner to [AI agents over MCP](#use-interninbox-from-your-ai) (JSON-RPC on stdin/stdout; meant for MCP clients, not for typing into) |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -391,6 +393,34 @@ hid it, so loosening a filter later won't flood `--new-only` with old posts.
 
 Run it on a schedule (cron, launchd, a shell alias) and `--new-only` becomes a
 personal internship feed.
+
+## Use interninbox from your AI
+
+`interninbox mcp` serves the scanner to AI agents over the
+[Model Context Protocol](https://modelcontextprotocol.io): newline-delimited
+JSON-RPC on stdin/stdout, nothing else on either stream. Register it with
+Claude Code in one command:
+
+```sh
+claude mcp add interninbox -- interninbox mcp
+```
+
+Then ask in plain language ("any new software internships in New York this
+week that sponsor visas?") and the agent runs real scans on your machine.
+The server exposes three tools:
+
+| Tool | What it exposes |
+| --- | --- |
+| `scan_internships` | The same scan core as the CLI. Parameters mirror the config file: `roles`, `locations`, `terms`, `require_sponsorship`, `registry` tier, `sources`, extra `companies` as `ats:slug`, a `since` window, and a result `limit`. Returns listings in the `--json` shape, including `sponsorship_evidence`, the sentence behind every visa verdict, so the agent can cite its source |
+| `list_role_presets` | The named [role presets](#role-presets) and the exact keywords each expands to |
+| `find_board` | Probes the supported ATSes for a company's board slug, ready to feed back into `scan_internships` |
+
+The politeness rules do not bend for agents: every tool call goes through the
+same sequential, rate-limited fetcher as a normal scan, with no API keys and
+no telemetry. MCP scans are also stateless by design: they never read or
+write your `--new-only` state file, so an agent poking around can never eat
+the listings from your personal feed. Any MCP-capable client works, not just
+Claude; point it at the `interninbox mcp` command over stdio.
 
 ## USAJOBS (optional)
 
