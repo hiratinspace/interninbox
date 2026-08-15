@@ -27,6 +27,7 @@ from interninbox.config import (
 )
 from interninbox.fetch import Fetcher
 from interninbox.filters import matches
+from interninbox.freshness import apply_since, parse_since
 from interninbox.locations import expand_location_terms
 from interninbox.models import AdapterError, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
@@ -51,6 +52,14 @@ def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console scr
         os.dup2(devnull, sys.stdout.fileno())
         code = 0
     sys.exit(code)
+
+
+def _since_arg(text: str) -> object:
+    """argparse adapter: surface parse_since's friendly message on bad input."""
+    try:
+        return parse_since(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +103,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask location/role/companies questions before scanning "
         "(automatic on a terminal when no config exists)",
+    )
+    scan_parser.add_argument(
+        "--since",
+        type=_since_arg,
+        default=None,
+        metavar="WINDOW",
+        help="show only listings posted within this window (7d, 36h, 2w); "
+        "undated listings are kept",
     )
     scan_parser.add_argument(
         "--quiet",
@@ -294,6 +311,8 @@ def _cmd_scan(
 
     result.listings_checked = len(result.listings)
     matched = [listing for listing in result.listings if matches(listing, filters)]
+    if args.since is not None:
+        matched = apply_since(matched, args.since)
     result.listings_matched = len(matched)
     shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
     # Record EVERYTHING fetched, flag or not, so "new" means "never fetched
@@ -315,7 +334,8 @@ def _cmd_scan(
     elif args.markdown:
         print(format_markdown(result))
     else:
-        print(format_table(result))
+        hyperlinks = sys.stdout.isatty() and not env.get("NO_COLOR")
+        print(format_table(result, hyperlinks=hyperlinks))
 
     if answers is not None and not args.config.is_file() and answers.tier != "config":
         ask = input_fn if input_fn is not None else input

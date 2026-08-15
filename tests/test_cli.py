@@ -773,3 +773,25 @@ def test_find_board_none_found_exits_one(
     captured = capsys.readouterr()
     assert code == 1
     assert "careers page" in captured.err  # points at the manual method
+
+
+def test_since_flag_accepted_and_bad_value_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    code = main(
+        ["scan", "--config", str(config), "--since", "500w"],
+        transport=make_transport(route),
+        **NO_SLEEP,
+    )
+    assert code == 0  # generous window keeps the fixture listings
+    assert "Platform Engineering Intern (Fall)" in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["scan", "--config", str(config), "--since", "banana"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2  # argparse rejects it with a usage message
+    assert "like 7d" in capsys.readouterr().err
