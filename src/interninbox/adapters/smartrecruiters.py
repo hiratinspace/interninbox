@@ -60,8 +60,8 @@ def fetch(
             break
     if total is not None and fetched < total:
         warn(
-            f"{SOURCE}:{slug}: board truncated at {fetched} of {total} postings "
-            "(enterprise board; the internship filter still applies to what was fetched)"
+            f"{SOURCE}:{slug}: large board, scanned the newest {fetched} of {total} "
+            "postings (older but still-open internships beyond that are not seen)"
         )
     return listings
 

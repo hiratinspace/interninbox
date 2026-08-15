@@ -37,6 +37,20 @@ from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
 
 
 def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console script
+    # Legacy Windows consoles need virtual-terminal mode switched on before
+    # ANSI (banner colors, OSC 8 links) renders instead of printing escapes.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            for handle_id in (-11, -12):  # stdout, stderr
+                handle = kernel32.GetStdHandle(handle_id)
+                mode = ctypes.c_uint32()
+                if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                    kernel32.SetConsoleMode(handle, mode.value | 0x0004)
+        except Exception:
+            pass  # cosmetic only; never block the scan
     # A console that cannot encode a title (Windows legacy codepages under
     # redirection) degrades characters instead of crashing the whole scan.
     for stream in (sys.stdout, sys.stderr):

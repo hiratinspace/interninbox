@@ -55,7 +55,7 @@ def test_truncation_at_page_cap_warns(instant_fetcher, monkeypatch) -> None:
     warnings: list[str] = []
     with instant_fetcher(make_transport(lambda _: json_response(page))) as fetcher:
         smartrecruiters.fetch(fetcher, "MeridianPay", warn=warnings.append)
-    assert warnings and "truncated" in warnings[0]
+    assert warnings and "newest" in warnings[0]
 
 
 def test_wrong_shape_and_malformed_entry_raise() -> None:
