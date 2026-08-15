@@ -795,3 +795,46 @@ def test_since_flag_accepted_and_bad_value_rejected(
         )
     assert excinfo.value.code == 2  # argparse rejects it with a usage message
     assert "like 7d" in capsys.readouterr().err
+
+
+def test_dedupe_merges_board_and_list_versions() -> None:
+    from conftest import make_listing
+
+    from interninbox.cli import _dedupe_listings
+
+    board = make_listing(
+        listing_id="gh1",
+        url="https://Jobs.Example.test/acme/123?utm_source=simplify",
+        sponsorship=None,
+    )
+    listed = make_listing(
+        listing_id="uuid-1",
+        source="simplify",
+        url="https://jobs.example.test/acme/123/",
+        sponsorship="offers-sponsorship",
+        degrees=("Bachelor's",),
+        curated=True,
+    )
+    other = make_listing(listing_id="gh2", url="https://jobs.example.test/acme/999")
+
+    deduped = _dedupe_listings([board, listed, other])
+    assert len(deduped) == 2  # board+list collapse; the third survives
+    kept = deduped[0]
+    assert kept.listing_id == "gh1"  # the direct board version wins...
+    assert kept.sponsorship == "offers-sponsorship"  # ...but inherits list metadata
+    assert kept.degrees == ("Bachelor's",)
+
+
+def test_board_plus_list_overlap_shows_one_row(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]\nsources = ["simplify"]\n')
+    code = main(
+        ["scan", "--config", str(config), "--json"], transport=make_transport(route), **NO_SLEEP
+    )
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    design = [item for item in payload["listings"] if item["title"] == "Design Intern"]
+    assert len(design) == 1  # the list duplicate collapsed into the board row
+    assert design[0]["source"] == "ashby"
+    assert design[0]["sponsorship"] == "offers-sponsorship"  # inherited from the list

@@ -7,6 +7,7 @@ import dataclasses
 import os
 import sys
 import time
+import urllib.parse
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from interninbox.fetch import Fetcher
 from interninbox.filters import matches
 from interninbox.freshness import apply_since, parse_since
 from interninbox.locations import expand_location_terms
-from interninbox.models import AdapterError, ScanResult
+from interninbox.models import AdapterError, Listing, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
 from interninbox.roles import expand_roles
 from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
@@ -246,6 +247,42 @@ def _effective_companies(config: Config) -> tuple[Company, ...]:
     return tuple(companies)
 
 
+def _normalize_url(url: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    host = parts.netloc.lower().removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/')}"
+
+
+def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
+    """Collapse the same posting seen via a board AND a community list.
+
+    The direct board version wins (fresher title and locations), but inherits
+    any eligibility metadata only the list knew (sponsorship, terms, degrees).
+    Order-preserving; first occurrence keeps its position.
+    """
+    by_url: dict[str, int] = {}
+    kept: list[Listing] = []
+    for listing in listings:
+        key = _normalize_url(listing.url)
+        index = by_url.get(key)
+        if index is None:
+            by_url[key] = len(kept)
+            kept.append(listing)
+            continue
+        existing = kept[index]
+        base, extra = (
+            (existing, listing) if listing.curated or not existing.curated
+            else (listing, existing)
+        )
+        kept[index] = dataclasses.replace(
+            base,
+            sponsorship=base.sponsorship or extra.sponsorship,
+            terms=base.terms or extra.terms,
+            degrees=base.degrees or extra.degrees,
+        )
+    return kept
+
+
 def _cmd_scan(
     args: argparse.Namespace,
     *,
@@ -309,6 +346,7 @@ def _cmd_scan(
         _scan_usajobs(config, fetcher, env, result, progress=progress)
         _scan_sources(config, fetcher, result, progress=progress)
 
+    result.listings = _dedupe_listings(result.listings)
     result.listings_checked = len(result.listings)
     matched = [listing for listing in result.listings if matches(listing, filters)]
     if args.since is not None:

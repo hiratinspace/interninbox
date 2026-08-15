@@ -18,11 +18,12 @@ def _handler(request):
 def test_fetch_source_maps_active_visible_entries(instant_fetcher) -> None:
     with instant_fetcher(make_transport(_handler)) as fetcher:
         listings = sources.fetch_source(fetcher, "simplify")
-    # 6 fixture rows: one inactive, one hidden, one malformed -> 3 survive.
+    # 7 fixture rows: one inactive, one hidden, one malformed -> 4 survive.
     assert [listing.title for listing in listings] == [
         "Quantum Software Intern",
         "2027 Mapping Analyst Program",
         "Systems Intern (Clearance)",
+        "Design Intern",
     ]
     first = listings[0]
     assert first.company == "Aurora Widgets"
