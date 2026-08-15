@@ -170,3 +170,36 @@ def test_registry_alone_is_something_to_scan(tmp_path: Path) -> None:
     path.write_text('registry = "top"\n', encoding="utf-8")
     config = load_config(path)  # no companies, no usajobs, registry suffices
     assert config.companies == () and config.registry == "top"
+
+
+def test_eligibility_filters_parsed(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text(
+        'companies = ["greenhouse:stripe"]\n'
+        "[filters]\n"
+        "require_sponsorship = true\n"
+        'terms = ["Summer 2027"]\n'
+        "degrees = [\"Bachelor's\"]\n",
+        encoding="utf-8",
+    )
+    filters = load_config(path).filters
+    assert filters.require_sponsorship is True
+    assert filters.terms == ("Summer 2027",)
+    assert filters.degrees == ("Bachelor's",)
+
+
+def test_sources_parsed_and_validated(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text('companies = ["greenhouse:stripe"]\nsources = ["simplify"]\n', encoding="utf-8")
+    assert load_config(path).sources == ("simplify",)
+
+    path.write_text('companies = ["greenhouse:stripe"]\nsources = ["linkedin"]\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="simplify"):
+        load_config(path)
+
+
+def test_sources_alone_is_something_to_scan(tmp_path: Path) -> None:
+    path = tmp_path / "interninbox.toml"
+    path.write_text('sources = ["simplify"]\n', encoding="utf-8")
+    config = load_config(path)
+    assert config.companies == () and config.sources == ("simplify",)

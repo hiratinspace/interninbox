@@ -37,6 +37,10 @@ class Filters:
     roles: tuple[str, ...] = ()
     locations: tuple[str, ...] = ()
     remote_ok: bool = True
+    # Eligibility (see eligibility.py). Unknown values never drop a listing.
+    require_sponsorship: bool = False
+    terms: tuple[str, ...] = ()
+    degrees: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,7 @@ class Config:
     companies: tuple[Company, ...]
     filters: Filters = field(default_factory=Filters)
     registry: str = "none"
+    sources: tuple[str, ...] = ()
     usajobs: UsaJobsConfig = field(default_factory=UsaJobsConfig)
     path: Path | None = None
 
@@ -116,6 +121,11 @@ def _parse_filters(raw: object) -> Filters:
         roles=roles,
         locations=_string_list(raw.get("locations"), where="filters.locations"),
         remote_ok=_boolean(raw.get("remote_ok"), where="filters.remote_ok", default=True),
+        require_sponsorship=_boolean(
+            raw.get("require_sponsorship"), where="filters.require_sponsorship", default=False
+        ),
+        terms=_string_list(raw.get("terms"), where="filters.terms"),
+        degrees=_string_list(raw.get("degrees"), where="filters.degrees"),
     )
 
 
@@ -187,17 +197,26 @@ def load_config(path: Path) -> Config:
             'registry must be one of "none", "top", "all", "large", "startups"'
         )
 
-    if not companies and not usajobs_cfg.enabled and registry == "none":
+    sources = _string_list(data.get("sources"), where="sources")
+    from interninbox.sources import KNOWN_SOURCES
+
+    for source in sources:
+        if source not in KNOWN_SOURCES:
+            valid = ", ".join(sorted(KNOWN_SOURCES))
+            raise ConfigError(f"unknown source {source!r}; valid sources: {valid}")
+
+    if not companies and not usajobs_cfg.enabled and registry == "none" and not sources:
         raise ConfigError(
             f"{path} configures nothing to scan; add a `companies` list "
             "(e.g. companies = [\"greenhouse:stripe\"]), set registry = \"top\", "
-            "or enable [usajobs]"
+            "add sources = [\"simplify\"], or enable [usajobs]"
         )
 
     return Config(
         companies=companies,
         filters=_parse_filters(data.get("filters")),
         registry=registry,
+        sources=sources,
         usajobs=usajobs_cfg,
         path=path,
     )
