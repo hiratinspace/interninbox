@@ -51,3 +51,17 @@ def test_run_scan_direct_with_progress_state_and_new_only(tmp_path: Path) -> Non
     )
     assert again.listings == []
     assert again.listings_matched == 2  # still matched, just not new
+
+
+def test_dedupe_distinguishes_same_path_different_job_ids() -> None:
+    from conftest import make_listing
+
+    from interninbox.scan import dedupe_listings
+
+    a = make_listing(listing_id="1", url="https://stripe.com/jobs/search?gh_jid=100")
+    b = make_listing(listing_id="2", url="https://stripe.com/jobs/search?gh_jid=200")
+    tracked = make_listing(
+        listing_id="3", url="https://stripe.com/jobs/search?gh_jid=100&utm_source=simplify"
+    )
+    deduped = dedupe_listings([a, b, tracked])
+    assert len(deduped) == 2  # distinct job ids stay; the utm variant merges into a

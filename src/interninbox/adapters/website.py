@@ -143,9 +143,28 @@ def iter_job_urls(
             return []
     candidates: list[tuple[str, str | None]] = []
     seen: set[str] = set()
-    state = {"children": 0, "warned": False}
+    state = {"children": 0, "warned": False, "offsite": 0}
     for sitemap_url in sitemap_urls:
+        # Robots-listed sitemaps count against the same cap as index children:
+        # a hostile robots.txt with hundreds of Sitemap lines stays bounded.
+        if state["children"] >= MAX_CHILD_SITEMAPS:
+            if not state["warned"]:
+                state["warned"] = True
+                warn(
+                    f"website:{domain}: more than {MAX_CHILD_SITEMAPS} "
+                    "sitemaps, truncated"
+                )
+            break
+        if not _in_scope(sitemap_url, domain):
+            state["offsite"] += 1
+            continue
+        state["children"] += 1
         _walk_sitemap(fetcher, sitemap_url, domain, 0, state, candidates, seen, warn)
+    if state["offsite"]:
+        warn(
+            f"website:{domain}: {state['offsite']} sitemap or page URLs pointed "
+            "outside the configured domain, skipped"
+        )
     allowed: list[tuple[str, str | None]] = []
     blocked = 0
     for url, lastmod in candidates:
@@ -209,11 +228,14 @@ def _walk_sitemap(
             loc = _child_text(child, "loc")
             if not loc:
                 continue
+            if not _in_scope(loc, domain):
+                state["offsite"] += 1
+                continue
             if state["children"] >= MAX_CHILD_SITEMAPS:
                 if not state["warned"]:
                     state["warned"] = True
                     warn(
-                        f"website:{domain}: more than {MAX_CHILD_SITEMAPS} child "
+                        f"website:{domain}: more than {MAX_CHILD_SITEMAPS} "
                         "sitemaps, truncated"
                     )
                 return
@@ -225,11 +247,22 @@ def _walk_sitemap(
             loc = _child_text(child, "loc")
             if not loc or loc in seen:
                 continue
+            if not _in_scope(loc, domain):
+                state["offsite"] += 1
+                continue
             if take_all or _looks_like_job_page(loc):
                 seen.add(loc)
                 candidates.append((loc, _child_text(child, "lastmod")))
     else:
         warn(f"website:{domain}: {url} is not a sitemap (root element {tag!r}), skipped")
+
+
+def _in_scope(url: str, domain: str) -> bool:
+    """Only the configured domain and its subdomains are ever fetched: a
+    sitemap must not be able to point the scanner at arbitrary hosts."""
+    host = urllib.parse.urlsplit(url).netloc.lower().split(":")[0]
+    wanted = domain.lower()
+    return host == wanted or host.endswith("." + wanted)
 
 
 def _local_name(tag: str) -> str:

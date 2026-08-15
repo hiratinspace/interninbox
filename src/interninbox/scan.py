@@ -27,6 +27,7 @@ from typing import Protocol
 
 import httpx
 
+from interninbox import jsonld
 from interninbox import registry as registry_mod
 from interninbox import sources as sources_mod
 from interninbox.adapters import ADAPTERS, usajobs
@@ -76,7 +77,11 @@ def effective_companies(config: Config) -> tuple[Company, ...]:
 def _normalize_url(url: str) -> str:
     parts = urllib.parse.urlsplit(url)
     host = parts.netloc.lower().removeprefix("www.")
-    return f"{host}{parts.path.rstrip('/')}"
+    # Meaningful query params are part of a posting's identity (gh_jid and
+    # friends); only tracking params are ignored. See jsonld.clean_query.
+    query = jsonld.clean_query(parts.query)
+    suffix = f"?{query}" if query else ""
+    return f"{host}{parts.path.rstrip('/')}{suffix}"
 
 
 def dedupe_listings(listings: list[Listing]) -> list[Listing]:

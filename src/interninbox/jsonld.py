@@ -77,11 +77,33 @@ def _is_job_posting(node: dict) -> bool:
     return False
 
 
+# Params that only track how a visitor arrived, never which job a page shows.
+_TRACKING_PARAMS = (
+    "gclid", "fbclid", "ref", "referrer", "src", "source", "gh_src", "lever-source"
+)
+
+
+def clean_query(query: str) -> str:
+    """The query string minus tracking params, sorted for a stable identity.
+
+    Meaningful params stay: many boards put the job id in the query
+    (stripe.com/jobs/search?gh_jid=...), so dropping the whole query would
+    collapse distinct postings into one identity.
+    """
+    kept = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(query, keep_blank_values=True)
+        if not (key.lower().startswith("utm_") or key.lower() in _TRACKING_PARAMS)
+    ]
+    return urllib.parse.urlencode(sorted(kept))
+
+
 def normalize_page_url(url: str) -> str:
-    """Stable page identity: host lowercased, query and fragment dropped."""
+    """Stable page identity: host lowercased, tracking params and fragment
+    dropped, meaningful query params kept in sorted order."""
     parts = urllib.parse.urlsplit(url)
     return urllib.parse.urlunsplit(
-        (parts.scheme.lower(), parts.netloc.lower(), parts.path, "", "")
+        (parts.scheme.lower(), parts.netloc.lower(), parts.path, clean_query(parts.query), "")
     )
 
 

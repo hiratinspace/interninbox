@@ -151,7 +151,9 @@ def test_walker_no_sitemap_anywhere_warns_and_returns_nothing(instant_fetcher) -
 def test_walker_child_sitemap_cap_truncates_honestly(
     instant_fetcher, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(website, "MAX_CHILD_SITEMAPS", 1)
+    # The cap counts every sitemap fetch (robots-listed entry points AND
+    # index children), so 2 = the index itself plus its first child.
+    monkeypatch.setattr(website, "MAX_CHILD_SITEMAPS", 2)
     warnings: list[str] = []
     with instant_fetcher(make_transport(_handler(_routes()))) as fetcher:
         found = website.iter_job_urls(fetcher, DOMAIN, warnings.append)
@@ -276,3 +278,60 @@ def test_fetch_counts_broken_pages_without_aborting(
 def test_registered_as_a_known_ats() -> None:
     assert "website" in KNOWN_ATS
     assert ADAPTERS["website"] is website.fetch
+
+
+def test_robots_listed_sitemaps_count_against_the_cap(instant_fetcher) -> None:
+    import httpx
+    from conftest import make_transport
+
+    from interninbox.adapters import website
+
+    robots = "User-agent: *\nAllow: /\n" + "\n".join(
+        f"Sitemap: https://caps.test/map{i}.xml" for i in range(50)
+    )
+    fetched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=robots)
+        return httpx.Response(
+            200,
+            text='<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            '<url><loc>https://caps.test/jobs/x</loc></url></urlset>',
+        )
+
+    warnings: list[str] = []
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        website.iter_job_urls(fetcher, "caps.test", warnings.append)
+    sitemap_fetches = [u for u in fetched if u.endswith(".xml")]
+    assert len(sitemap_fetches) <= website.MAX_CHILD_SITEMAPS
+    assert any("sitemap" in w.lower() for w in warnings)  # honest truncation
+
+
+def test_offsite_sitemap_urls_are_skipped(instant_fetcher) -> None:
+    import httpx
+    from conftest import make_transport
+
+    from interninbox.adapters import website
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        host, path = request.url.host, request.url.path
+        assert host != "evil.test", "scanner must never fetch out-of-scope hosts"
+        if path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\nSitemap: https://scope.test/sitemap.xml")
+        if path == "/sitemap.xml":
+            return httpx.Response(
+                200,
+                text='<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                "<url><loc>https://evil.test/jobs/steal</loc></url>"
+                "<url><loc>https://careers.scope.test/jobs/ok</loc></url>"
+                "<url><loc>https://scope.test/jobs/fine</loc></url></urlset>",
+            )
+        return httpx.Response(200, text="<html></html>")
+
+    with instant_fetcher(make_transport(handler)) as fetcher:
+        urls = [u for u, _ in website.iter_job_urls(fetcher, "scope.test", lambda _m: None)]
+    assert "https://evil.test/jobs/steal" not in urls
+    assert "https://careers.scope.test/jobs/ok" in urls  # subdomains are in scope
+    assert "https://scope.test/jobs/fine" in urls

@@ -5,7 +5,7 @@ import json
 
 from interninbox.config import Filters
 from interninbox.filters import matches
-from interninbox.jsonld import extract_job_postings, posting_to_listing
+from interninbox.jsonld import extract_job_postings, normalize_page_url, posting_to_listing
 
 DOMAIN = "careers.example-co.test"
 # Mixed-case host and a tracking query: normalization must strip both.
@@ -216,3 +216,13 @@ def test_staff_role_exclusion_still_applies() -> None:
     )
     assert listing is not None
     assert matches(listing, Filters()) is False
+
+
+def test_page_identity_keeps_meaningful_query_params() -> None:
+    # Two jobs on the same path distinguished only by query must not collide.
+    a = normalize_page_url("https://ex.com/careers?id=1&utm_source=x")
+    b = normalize_page_url("https://ex.com/careers?id=2")
+    assert a != b
+    # Tracking params never change identity; param order never changes identity.
+    assert normalize_page_url("https://ex.com/careers?b=2&a=1&utm_campaign=z") == \
+        normalize_page_url("https://EX.com/careers?a=1&b=2")
