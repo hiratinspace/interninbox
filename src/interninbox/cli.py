@@ -314,7 +314,9 @@ def _scan_boards(
             print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
         adapter_fetch = ADAPTERS[company.ats]
         try:
-            listings = adapter_fetch(fetcher, company.slug, content=content)
+            listings = adapter_fetch(
+                fetcher, company.slug, content=content, warn=result.warnings.append
+            )
         except AdapterError as exc:
             result.companies_failed += 1
             result.warnings.append(f"{company.label}: {exc}")

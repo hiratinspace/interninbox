@@ -16,6 +16,7 @@ Field notes:
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 
 from interninbox import eligibility
 from interninbox.fetch import Fetcher
@@ -26,7 +27,13 @@ BASE_URL = "https://api.lever.co/v0/postings/{slug}"
 SOURCE = "lever"
 
 
-def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+def fetch(
+    fetcher: Fetcher,
+    slug: str,
+    *,
+    content: bool = False,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Listing]:
     # `content` is accepted for adapter-signature uniformity; Lever includes
     # descriptions in every response, so classification is always on.
     payload = fetcher.get_json(BASE_URL.format(slug=slug), params={"mode": "json"})

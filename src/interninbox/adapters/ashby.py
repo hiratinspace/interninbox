@@ -15,6 +15,7 @@ Field notes:
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 
 from interninbox import eligibility
 from interninbox.fetch import Fetcher
@@ -25,7 +26,13 @@ BASE_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 SOURCE = "ashby"
 
 
-def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+def fetch(
+    fetcher: Fetcher,
+    slug: str,
+    *,
+    content: bool = False,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Listing]:
     # `content` is accepted for adapter-signature uniformity; Ashby includes
     # descriptionHtml in every response, so classification is always on.
     payload = fetcher.get_json(BASE_URL.format(slug=slug))
