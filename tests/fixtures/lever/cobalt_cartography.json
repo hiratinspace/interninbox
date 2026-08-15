@@ -8,9 +8,13 @@
     "workplaceType": "onsite",
     "categories": {
       "location": "San Francisco, CA",
-      "allLocations": ["San Francisco, CA", "New York, NY"],
+      "allLocations": [
+        "San Francisco, CA",
+        "New York, NY"
+      ],
       "team": "Engineering"
-    }
+    },
+    "descriptionPlain": "Work on maps. U.S. citizenship is required for this position."
   },
   {
     "id": "d3adbeef-0002-4000-8000-000000000002",
@@ -19,7 +23,10 @@
     "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0002/apply",
     "createdAt": 1782914400000,
     "workplaceType": "hybrid",
-    "categories": { "location": "Chicago, IL", "team": "Engineering" }
+    "categories": {
+      "location": "Chicago, IL",
+      "team": "Engineering"
+    }
   },
   {
     "id": "d3adbeef-0003-4000-8000-000000000003",
@@ -28,6 +35,9 @@
     "applyUrl": "https://jobs.example-lever.test/cobalt-cartography/d3adbeef-0003/apply",
     "createdAt": 1786024800000,
     "workplaceType": "remote",
-    "categories": { "location": "United States", "team": "Data" }
+    "categories": {
+      "location": "United States",
+      "team": "Data"
+    }
   }
 ]

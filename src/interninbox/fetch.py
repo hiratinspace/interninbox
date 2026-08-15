@@ -107,11 +107,14 @@ class Fetcher:
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
         follow_redirects: bool = True,
+        max_response_bytes: int | None = None,
     ) -> object:
         """GET `url` and return the decoded JSON body.
 
         Raises `AdapterError` with a one-line human message on any failure
-        (after one retry for transient ones).
+        (after one retry for transient ones). `max_response_bytes` overrides
+        the instance cap for known-large legitimate payloads (community list
+        files, description-laden boards).
         """
         host = urllib.parse.urlsplit(url).netloc
         last_error: str = "unknown error"
@@ -134,22 +137,25 @@ class Fetcher:
                         raise AdapterError(
                             f"unexpected redirect (HTTP {response.status_code}) from {host}"
                         )
-                    body = self._read_limited(response, host)
+                    body = self._read_limited(response, host, max_response_bytes)
             except httpx.HTTPError as exc:
                 last_error = f"network error: {exc}"
                 continue  # transient, retry once
             return _parse_json(body, host)
         raise AdapterError(f"{last_error} (after retry)")
 
-    def _read_limited(self, response: httpx.Response, host: str) -> bytes:
+    def _read_limited(
+        self, response: httpx.Response, host: str, max_response_bytes: int | None = None
+    ) -> bytes:
+        limit = max_response_bytes if max_response_bytes is not None else self._max_response_bytes
         chunks: list[bytes] = []
         total = 0
         started = self._clock()
         for chunk in response.iter_bytes():
             total += len(chunk)
-            if total > self._max_response_bytes:
+            if total > limit:
                 raise AdapterError(
-                    f"response from {host} is larger than {self._max_response_bytes} bytes, "
+                    f"response from {host} is larger than {limit} bytes, "
                     "refusing it"
                 )
             if self._clock() - started > READ_DEADLINE_SECONDS:

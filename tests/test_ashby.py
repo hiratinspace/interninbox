@@ -54,3 +54,10 @@ def test_parse_secondary_locations_included_and_deduped() -> None:
     # Primary "North America" + secondary "Europe"; the duplicate secondary
     # "North America" is dropped; "Remote" still appended from workplaceType.
     assert listings[1].locations == ("North America", "Europe", "Remote")
+
+
+def test_description_html_is_classified_and_terms_derived() -> None:
+    listings = ashby.parse(load_fixture("ashby/harborline.json"), "harborline")
+    by_title = {listing.title: listing for listing in listings}
+    assert by_title["Platform Engineering Intern (Fall)"].sponsorship == "offers-sponsorship"
+    assert by_title["Design Intern"].sponsorship is None

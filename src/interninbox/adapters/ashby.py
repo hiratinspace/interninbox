@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from interninbox import eligibility
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError, Listing
 
@@ -24,7 +25,9 @@ BASE_URL = "https://api.ashbyhq.com/posting-api/job-board/{slug}"
 SOURCE = "ashby"
 
 
-def fetch(fetcher: Fetcher, slug: str) -> list[Listing]:
+def fetch(fetcher: Fetcher, slug: str, *, content: bool = False) -> list[Listing]:
+    # `content` is accepted for adapter-signature uniformity; Ashby includes
+    # descriptionHtml in every response, so classification is always on.
     payload = fetcher.get_json(BASE_URL.format(slug=slug))
     return parse(payload, slug)
 
@@ -66,12 +69,20 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
         except ValueError:
             posted_at = None
 
+    title = str(job["title"])
+    description = job.get("descriptionHtml") or ""
+    sponsorship = eligibility.classify_sponsorship(
+        eligibility.text_from_html(str(description))
+    )
+
     return Listing(
         company=slug,
         source=SOURCE,
         listing_id=str(job["id"]),
-        title=str(job["title"]),
+        title=title,
         url=str(job["jobUrl"]),
         locations=tuple(locations),
         posted_at=posted_at,
+        sponsorship=sponsorship,
+        terms=eligibility.derive_terms(title),
     )

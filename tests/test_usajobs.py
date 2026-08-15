@@ -160,3 +160,9 @@ def test_truncation_at_page_cap_warns(instant_fetcher) -> None:
     with instant_fetcher(make_transport(handler)) as fetcher:
         usajobs.fetch(fetcher, CFG, "fixture-api-key", warn=warnings.append)
     assert warnings and "truncated" in warnings[0]
+
+
+def test_federal_listings_are_citizenship_restricted() -> None:
+    payload = load_fixture("usajobs/page1.json")
+    item = payload["SearchResult"]["SearchResultItems"][0]
+    assert usajobs.parse_item(item).sponsorship == "citizenship-required"
