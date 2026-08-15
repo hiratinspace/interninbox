@@ -95,6 +95,28 @@ def test_plain_scripts_and_other_types_are_ignored() -> None:
     assert extract_job_postings(_page({"@type": "Organization", "name": "X"})) == []
 
 
+def test_hostile_deep_array_never_crashes_or_hides_a_valid_block() -> None:
+    # A ~3KB pathological payload: nesting deeper than the interpreter
+    # recursion limit but shallow enough that json.loads still parses it.
+    # Flattening must not raise RecursionError, and the valid block on the
+    # same page must survive (a hostile site aborts nothing).
+    depth = 1500
+    hostile = "[" * depth + "]" * depth
+    html = (
+        f'<script type="application/ld+json">{hostile}</script>'
+        + _page({"@type": "JobPosting", "title": "Survivor Intern"})
+    )
+    assert [posting["title"] for posting in extract_job_postings(html)] == ["Survivor Intern"]
+
+
+def test_posting_inside_a_deeply_nested_array_is_still_found() -> None:
+    depth = 1500
+    body = "[" * depth + json.dumps({"@type": "JobPosting", "title": "Deep Intern"})
+    body += "]" * depth
+    html = f'<script type="application/ld+json">{body}</script>'
+    assert [posting["title"] for posting in extract_job_postings(html)] == ["Deep Intern"]
+
+
 # ---- posting_to_listing ----
 
 

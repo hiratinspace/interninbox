@@ -46,18 +46,26 @@ def extract_job_postings(html: str) -> list[dict]:
 
 
 def _flatten(payload: object) -> list[dict]:
-    """Candidate nodes in a parsed block: object, array, or @graph members."""
-    if isinstance(payload, list):
-        nodes: list[dict] = []
-        for item in payload:
-            nodes.extend(_flatten(item))
-        return nodes
-    if isinstance(payload, dict):
-        graph = payload.get("@graph")
-        if isinstance(graph, list):
-            return [node for node in graph if isinstance(node, dict)]
-        return [payload]
-    return []
+    """Candidate nodes in a parsed block: object, array, or @graph members.
+
+    Iterative on purpose: a hostile page can nest arrays deeper than the
+    interpreter recursion limit while still being cheap for json.loads to
+    parse, and a RecursionError here would abort the whole scan. An explicit
+    stack keeps any nesting depth safe and preserves page order.
+    """
+    nodes: list[dict] = []
+    stack: list[object] = [payload]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(reversed(item))
+        elif isinstance(item, dict):
+            graph = item.get("@graph")
+            if isinstance(graph, list):
+                nodes.extend(node for node in graph if isinstance(node, dict))
+            else:
+                nodes.append(item)
+    return nodes
 
 
 def _is_job_posting(node: dict) -> bool:
