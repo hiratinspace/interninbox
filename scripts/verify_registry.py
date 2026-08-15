@@ -20,6 +20,7 @@ ENDPOINTS = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
     "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
+    "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=1",
 }
 
 
@@ -32,7 +33,11 @@ def main() -> int:
             try:
                 response = client.get(url)
                 ok = response.status_code == 200
-            except httpx.HTTPError:
+                if ok and entry.ats == "smartrecruiters":
+                    # SR answers 200 with totalFound 0 for ANY identifier,
+                    # so a real tenant must show at least one posting.
+                    ok = (response.json().get("totalFound") or 0) > 0
+            except (httpx.HTTPError, ValueError):
                 ok = False
             status = "PASS" if ok else "FAIL"
             if not ok:
