@@ -13,7 +13,10 @@ names stay available so users can pin one. New seasons arrive via releases.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from interninbox import eligibility
 from interninbox.fetch import Fetcher
@@ -71,7 +74,7 @@ def fetch_source(fetcher: Fetcher, name: str) -> list[Listing]:
     if spec is None:
         valid = ", ".join(sorted(KNOWN_SOURCES))
         raise AdapterError(f"unknown source {name!r}; valid sources: {valid}")
-    payload = fetcher.get_json(spec.url, max_response_bytes=SOURCE_MAX_BYTES)
+    payload = _fetch_with_cache(fetcher, spec)
     if not isinstance(payload, list):
         raise AdapterError(f"unexpected {spec.label} shape (not a JSON array)")
     listings: list[Listing] = []
@@ -119,3 +122,51 @@ def _str_tuple(raw: object) -> tuple[str, ...]:
     if not isinstance(raw, list):
         return ()
     return tuple(item for item in raw if isinstance(item, str) and item)
+
+
+def _cache_dir() -> Path:
+    """Platform cache directory for list bodies (created on demand)."""
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        base = Path(os.environ["LOCALAPPDATA"])
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    return base / "interninbox"
+
+
+def _fetch_with_cache(fetcher: Fetcher, spec: Source) -> object:
+    """Conditional fetch: a fresh list updates the cache; an unchanged one
+    (HTTP 304) is served from it. Cache trouble never breaks a scan; it just
+    costs the full download."""
+    body_path = etag_path = None
+    etag = None
+    try:
+        cache = _cache_dir()
+        body_path = cache / f"{spec.name}.json"
+        etag_path = cache / f"{spec.name}.etag"
+        if body_path.is_file() and etag_path.is_file():
+            etag = etag_path.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        body_path = etag_path = None
+
+    payload, new_etag = fetcher.get_json_conditional(
+        spec.url, etag=etag, max_response_bytes=SOURCE_MAX_BYTES
+    )
+    if payload is None and body_path is not None:  # 304: our copy is current
+        try:
+            return json.loads(body_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            # Cache rotted underneath us: pay for one full refetch.
+            payload, new_etag = fetcher.get_json_conditional(
+                spec.url, etag=None, max_response_bytes=SOURCE_MAX_BYTES
+            )
+
+    if payload is not None and new_etag and body_path is not None and etag_path is not None:
+        try:
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = body_path.with_name(body_path.name + f".{os.getpid()}.tmp")
+            tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+            os.replace(tmp, body_path)
+            etag_path.write_text(new_etag, encoding="utf-8")
+        except OSError:
+            pass  # caching is an optimization, never a requirement
+    return payload

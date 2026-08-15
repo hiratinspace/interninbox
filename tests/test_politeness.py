@@ -208,3 +208,27 @@ def test_per_call_max_response_bytes_override() -> None:
         )
         with pytest.raises(AdapterError, match="larger than"):
             fetcher.get_json("https://api.lever.co/v0/postings/one")
+
+
+def test_conditional_get_sends_etag_and_handles_304() -> None:
+    calls: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.headers.get("If-None-Match") == '"abc"':
+            return httpx.Response(304)
+        return httpx.Response(200, json={"ok": True}, headers={"ETag": '"abc"'})
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        payload, etag = fetcher.get_json_conditional(
+            "https://raw.githubusercontent.com/x/y/z.json", etag=None
+        )
+        assert payload == {"ok": True} and etag == '"abc"'
+        assert "If-None-Match" not in calls[0].headers
+
+        payload, etag = fetcher.get_json_conditional(
+            "https://raw.githubusercontent.com/x/y/z.json", etag='"abc"'
+        )
+        assert payload is None  # 304: caller should use its cache
+        assert etag == '"abc"'
+        assert calls[1].headers["If-None-Match"] == '"abc"'
