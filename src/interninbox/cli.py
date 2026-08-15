@@ -228,7 +228,8 @@ def _cmd_find_board(
             f"no board found for {args.name!r} on the supported ATSes. The slug may "
             "be unusual: open the company's careers page and read the URL "
             "(job-boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, "
-            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>).",
+            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>, "
+            "apply.workable.com/<slug>).",
             file=sys.stderr,
         )
         return 1

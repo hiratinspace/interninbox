@@ -750,6 +750,26 @@ def test_smartrecruiters_scan_end_to_end(
     assert "jobs.smartrecruiters.com/MeridianPay/744000900000001" in out
 
 
+def test_workable_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def workable_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "www.workable.com":
+            return json_response(load_fixture("workable/meadowbrook.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["workable:meadowbrook-robotics"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(workable_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Robotics Software Intern (Summer 2027)" in out
+    assert "Machine Learning Intern" in out
+    assert "Senior Controls Engineer" not in out  # staff filter still applies
+    assert "apply.workable.com/j/AB12CD3" in out
+
+
 def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:

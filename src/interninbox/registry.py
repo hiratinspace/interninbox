@@ -66,6 +66,7 @@ def _label(seconds: int) -> str:
 
 
 _G, _L, _A, _S = "greenhouse", "lever", "ashby", "smartrecruiters"
+_W = "workable"
 
 REGISTRY: tuple[RegistryCompany, ...] = (
     # ---- greenhouse, large ----
@@ -250,4 +251,9 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(
         _S, "LLNL", "Lawrence Livermore National Laboratory", "large", ("research",)
     ),
+    # ---- workable ----
+    # 2026-08-15 adapter probe (mined from the Simplify list, live-verified):
+    RegistryCompany(_W, "thorlabs", "Thorlabs", "large", ("hardware",)),
+    RegistryCompany(_W, "pony-dot-ai", "Pony.ai", "large", ("automotive", "ai")),
+    RegistryCompany(_W, "onlogic-inc", "OnLogic", "startup", ("hardware",)),
 )

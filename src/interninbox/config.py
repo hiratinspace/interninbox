@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-KNOWN_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters")
+KNOWN_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")
 
 DEFAULT_CONFIG_NAME = "interninbox.toml"
 
@@ -231,6 +231,7 @@ STARTER_CONFIG = """\
 #   jobs.lever.co/<slug>             ->  "lever:<slug>"
 #   jobs.ashbyhq.com/<slug>          ->  "ashby:<slug>"
 #   jobs.smartrecruiters.com/<slug>  ->  "smartrecruiters:<slug>"
+#   apply.workable.com/<slug>        ->  "workable:<slug>"
 # Or let `interninbox find-board "Acme Corp"` guess the slug for you.
 # `interninbox companies` prints a starter list of well-known companies.
 companies = [

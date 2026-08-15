@@ -21,6 +21,8 @@ ENDPOINTS = {
     "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
     "smartrecruiters": "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=1",
+    # Unknown Workable slugs 404 (verified live), so 200 alone proves liveness.
+    "workable": "https://www.workable.com/api/accounts/{slug}",
 }
 
 

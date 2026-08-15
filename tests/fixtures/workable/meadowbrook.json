@@ -1,0 +1,78 @@
+{
+  "name": "Meadowbrook Robotics",
+  "description": "Careers at Meadowbrook Robotics.",
+  "jobs": [
+    {
+      "title": "Robotics Software Intern (Summer 2027)",
+      "shortcode": "AB12CD3",
+      "code": "",
+      "employment_type": "Full-time",
+      "telecommuting": false,
+      "department": "Engineering",
+      "url": "https://apply.workable.com/j/AB12CD3",
+      "shortlink": "https://apply.workable.com/j/AB12CD3",
+      "application_url": "https://apply.workable.com/j/AB12CD3/apply",
+      "published_on": "2026-08-01",
+      "created_at": "2026-07-30",
+      "country": "United States",
+      "city": "Ann Arbor",
+      "state": "Michigan",
+      "education": "",
+      "experience": "Internship",
+      "function": "Engineering",
+      "industry": "Robotics",
+      "locations": [
+        {
+          "country": "United States",
+          "countryCode": "US",
+          "city": "Ann Arbor",
+          "region": "Michigan",
+          "hidden": false
+        },
+        {
+          "country": "Germany",
+          "countryCode": "DE",
+          "city": "Munich",
+          "region": "",
+          "hidden": true
+        }
+      ],
+      "description": "<p>Build robot software with us.</p><p>We are unable to sponsor visas for this position.</p>"
+    },
+    {
+      "title": "Machine Learning Intern",
+      "shortcode": "EF45GH6",
+      "code": "",
+      "employment_type": "Contract",
+      "telecommuting": true,
+      "department": "AI",
+      "url": "https://apply.workable.com/j/EF45GH6",
+      "shortlink": "https://apply.workable.com/j/EF45GH6",
+      "application_url": "https://apply.workable.com/j/EF45GH6/apply",
+      "published_on": "2026-07-20",
+      "created_at": "2026-07-18",
+      "country": "",
+      "city": "",
+      "state": "",
+      "locations": [],
+      "description": "<p>Train models all summer.</p><p>Visa sponsorship is available for this role.</p>"
+    },
+    {
+      "title": "Senior Controls Engineer",
+      "shortcode": "IJ78KL9",
+      "code": "",
+      "employment_type": "Full-time",
+      "telecommuting": false,
+      "department": "Engineering",
+      "url": "https://apply.workable.com/j/IJ78KL9",
+      "shortlink": "https://apply.workable.com/j/IJ78KL9",
+      "application_url": "https://apply.workable.com/j/IJ78KL9/apply",
+      "published_on": "2026-06-15",
+      "created_at": "2026-06-10",
+      "country": "United States",
+      "city": "Boulder",
+      "state": "Colorado",
+      "locations": []
+    }
+  ]
+}
