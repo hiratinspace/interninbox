@@ -7,7 +7,6 @@ import dataclasses
 import os
 import sys
 import time
-import urllib.parse
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -15,25 +14,24 @@ import httpx
 
 from interninbox import __version__, banner, wizard
 from interninbox import companies as companies_mod
-from interninbox import registry as registry_mod
-from interninbox import sources as sources_mod
-from interninbox.adapters import ADAPTERS, usajobs
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
     Company,
     Config,
     ConfigError,
-    Filters,
     load_config,
 )
 from interninbox.fetch import Fetcher
-from interninbox.filters import matches
-from interninbox.freshness import apply_since, parse_since
-from interninbox.locations import expand_location_terms
-from interninbox.models import AdapterError, Listing, ScanResult
+from interninbox.freshness import parse_since
+from interninbox.models import ScanResult
 from interninbox.output import format_json, format_markdown, format_table
-from interninbox.roles import expand_roles
-from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
+from interninbox.scan import (
+    dedupe_listings,
+    effective_filters,
+    run_scan,
+    scan_boards,
+)
+from interninbox.state import STATE_FILE_NAME, default_state_path
 
 
 def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console script
@@ -234,71 +232,32 @@ def _cmd_find_board(
     return 0
 
 
-def _effective_filters(config: Config) -> Filters:
-    """Scan-time filter view: aliases expanded, role presets merged in."""
-    role_keywords = expand_roles(config.filters.roles)
-    merged = config.filters.match_keywords + tuple(
-        keyword for keyword in role_keywords
-        if keyword not in config.filters.match_keywords
+# The scan machinery lives in interninbox.scan now; these names stay on the
+# cli module (they are its historical surface, and tests import them here).
+_effective_filters = effective_filters
+_dedupe_listings = dedupe_listings
+
+
+def _scan_boards(
+    companies: tuple[Company, ...],
+    fetcher: Fetcher,
+    result: ScanResult,
+    *,
+    progress: bool = False,
+    content: bool = False,
+) -> None:
+    """Compatibility wrapper over scan.scan_boards with the old bool progress."""
+    scan_boards(
+        companies,
+        fetcher,
+        result,
+        progress=_stderr_line if progress else None,
+        content=content,
     )
-    return dataclasses.replace(
-        config.filters,
-        match_keywords=merged,
-        locations=expand_location_terms(config.filters.locations),
-    )
 
 
-def _effective_companies(config: Config) -> tuple[Company, ...]:
-    """Config companies first, then the chosen registry tier (deduped)."""
-    companies = list(config.companies)
-    if config.registry != "none":
-        listed = {company.label for company in companies}
-        for entry in registry_mod.select(config.registry):
-            company = Company(ats=entry.ats, slug=entry.slug)
-            if company.label not in listed:
-                listed.add(company.label)
-                companies.append(company)
-    return tuple(companies)
-
-
-def _normalize_url(url: str) -> str:
-    parts = urllib.parse.urlsplit(url)
-    host = parts.netloc.lower().removeprefix("www.")
-    return f"{host}{parts.path.rstrip('/')}"
-
-
-def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
-    """Collapse the same posting seen via a board AND a community list.
-
-    The direct board version wins (fresher title and locations), but inherits
-    any eligibility metadata only the list knew (sponsorship, terms, degrees).
-    Order-preserving; first occurrence keeps its position.
-    """
-    by_url: dict[str, int] = {}
-    kept: list[Listing] = []
-    for listing in listings:
-        key = _normalize_url(listing.url)
-        index = by_url.get(key)
-        if index is None:
-            by_url[key] = len(kept)
-            kept.append(listing)
-            continue
-        existing = kept[index]
-        base, extra = (
-            (existing, listing) if listing.curated or not existing.curated
-            else (listing, existing)
-        )
-        kept[index] = dataclasses.replace(
-            base,
-            sponsorship=base.sponsorship or extra.sponsorship,
-            # Evidence travels with whichever sponsorship verdict was kept.
-            sponsorship_evidence=(
-                base.sponsorship_evidence if base.sponsorship else extra.sponsorship_evidence
-            ),
-            terms=base.terms or extra.terms,
-            degrees=base.degrees or extra.degrees,
-        )
-    return kept
+def _stderr_line(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
 
 
 def _cmd_scan(
@@ -345,46 +304,25 @@ def _cmd_scan(
     else:
         config = load_config(args.config)
     state_path = args.state if args.state else default_state_path(args.config)
-    state = load_state(state_path)
-    if state.warning:
-        print(f"warning: {state.warning}", file=sys.stderr)
 
-    companies = _effective_companies(config)
-    filters = _effective_filters(config)
-    if len(companies) >= 20:
-        note = (
-            f"scanning {len(companies)} boards, roughly "
-            f"{registry_mod.estimate_label_for(companies)} at polite pacing"
-        )
-        if filters.require_sponsorship:
-            note += " (downloading descriptions for the sponsorship filter)"
-        print(note, file=sys.stderr)
+    show_progress = sys.stderr.isatty() and not args.quiet
 
-    progress = sys.stderr.isatty() and not args.quiet
-    result = ScanResult()
-    with Fetcher(transport=transport, sleep=sleep) as fetcher:
-        # Descriptions are only worth fetching when a filter reads them.
-        _scan_boards(
-            companies, fetcher, result, progress=progress, content=filters.require_sponsorship
-        )
-        _scan_usajobs(config, fetcher, env, result, progress=progress)
-        _scan_sources(config, fetcher, result, progress=progress)
+    def progress(line: str, *, essential: bool = False) -> None:
+        # Essential lines (the state warning, the scale note) always print;
+        # per-company progress only on an interactive, non-quiet terminal.
+        if essential or show_progress:
+            _stderr_line(line)
 
-    result.listings = _dedupe_listings(result.listings)
-    result.listings_checked = len(result.listings)
-    matched = [listing for listing in result.listings if matches(listing, filters)]
-    if args.since is not None:
-        matched = apply_since(matched, args.since)
-    result.listings_matched = len(matched)
-    shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
-    # Record EVERYTHING fetched, flag or not, so "new" means "never fetched
-    # before": loosening a filter later cannot flood --new-only with old posts.
-    state.record(result.listings)
-    result.listings = shown
-    try:
-        state.save(state_path)
-    except OSError as exc:
-        result.warnings.append(f"could not write state file {state_path}: {exc}")
+    result = run_scan(
+        config,
+        new_only=args.new_only,
+        since=args.since,
+        transport=transport,
+        sleep=sleep,
+        env=env,
+        progress=progress,
+        state_path=state_path,
+    )
 
     for note in result.notes:
         print(note, file=sys.stderr)
@@ -412,74 +350,3 @@ def _cmd_scan(
         print("error: every configured company failed; is the network down?", file=sys.stderr)
         return 1
     return 0
-
-
-def _scan_boards(
-    companies: tuple[Company, ...],
-    fetcher: Fetcher,
-    result: ScanResult,
-    *,
-    progress: bool = False,
-    content: bool = False,
-) -> None:
-    total = len(companies)
-    for index, company in enumerate(companies, start=1):
-        if progress:
-            print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
-        adapter_fetch = ADAPTERS[company.ats]
-        try:
-            listings = adapter_fetch(
-                fetcher, company.slug, content=content, warn=result.warnings.append
-            )
-        except AdapterError as exc:
-            result.companies_failed += 1
-            result.warnings.append(f"{company.label}: {exc}")
-            continue
-        result.companies_scanned += 1
-        result.listings.extend(listings)
-
-
-def _scan_sources(
-    config: Config, fetcher: Fetcher, result: ScanResult, *, progress: bool = False
-) -> None:
-    for name in config.sources:
-        if progress:
-            print(f"[source] {name} ...", file=sys.stderr, flush=True)
-        try:
-            listings = sources_mod.fetch_source(fetcher, name, warn=result.warnings.append)
-        except AdapterError as exc:
-            result.companies_failed += 1
-            result.warnings.append(f"source {name}: {exc}")
-            continue
-        result.sources_scanned += 1
-        result.listings.extend(listings)
-
-
-def _scan_usajobs(
-    config: Config,
-    fetcher: Fetcher,
-    env: Mapping[str, str],
-    result: ScanResult,
-    *,
-    progress: bool = False,
-) -> None:
-    cfg = config.usajobs
-    if not cfg.enabled:
-        return
-    api_key = env.get(cfg.api_key_env, "").strip()
-    if not api_key:
-        result.notes.append(
-            f"usajobs: enabled but {cfg.api_key_env} is not set, skipping "
-            "(get a free key at https://developer.usajobs.gov/apirequest/)"
-        )
-        return
-    if progress:
-        print("[usajobs] data.usajobs.gov ...", file=sys.stderr, flush=True)
-    try:
-        listings = usajobs.fetch(fetcher, cfg, api_key, warn=result.warnings.append)
-    except AdapterError as exc:
-        result.companies_failed += 1
-        result.warnings.append(f"usajobs: {exc}")
-        return
-    result.companies_scanned += 1
-    result.listings.extend(listings)
