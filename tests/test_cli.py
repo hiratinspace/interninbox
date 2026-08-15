@@ -745,3 +745,31 @@ def test_smartrecruiters_scan_end_to_end(
     assert "Risk Analytics Intern" in out
     assert "Senior Treasury Manager" not in out  # staff filter still applies
     assert "jobs.smartrecruiters.com/MeridianPay/744000900000001" in out
+
+
+def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:
+            return json_response({"jobs": []})
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response({"totalFound": 0, "content": []})
+        return httpx.Response(404)
+
+    code = main(["find-board", "Acme"], transport=make_transport(handler), **NO_SLEEP)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert '"greenhouse:acme"' in out  # ready to paste into the config
+
+
+def test_find_board_none_found_exits_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def nothing(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.smartrecruiters.com":
+            return json_response({"totalFound": 0, "content": []})
+        return httpx.Response(404)
+
+    code = main(["find-board", "Ghost"], transport=make_transport(nothing), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "careers page" in captured.err  # points at the manual method
