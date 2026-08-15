@@ -109,10 +109,32 @@ def test_hostile_deep_array_never_crashes_or_hides_a_valid_block() -> None:
     assert [posting["title"] for posting in extract_job_postings(html)] == ["Survivor Intern"]
 
 
-def test_posting_inside_a_deeply_nested_array_is_still_found() -> None:
-    depth = 1500
-    body = "[" * depth + json.dumps({"@type": "JobPosting", "title": "Deep Intern"})
-    body += "]" * depth
+def test_flatten_is_iterative_beyond_the_recursion_limit() -> None:
+    # Build the nested object directly (json.loads has its own version-varying
+    # depth limits: Python 3.11 refuses ~1500 while 3.13 accepts it). What the
+    # regression guards is _flatten itself never recursing.
+    import sys
+
+    from interninbox.jsonld import _flatten
+
+    node: object = {"@type": "JobPosting", "title": "Deep Intern"}
+    for _ in range(sys.getrecursionlimit() * 5):
+        node = [node]
+    found = [item for item in _flatten(node) if isinstance(item, dict)]
+    assert [posting["title"] for posting in found] == ["Deep Intern"]
+
+
+def test_hostile_deep_json_never_aborts_extraction() -> None:
+    # At depths json.loads itself refuses (version dependent), the block is
+    # skipped rather than crashing; at parseable depths the posting is found.
+    deep = 20_000
+    body = "[" * deep + json.dumps({"@type": "JobPosting", "title": "Deep Intern"}) + "]" * deep
+    html = f'<script type="application/ld+json">{body}</script>'
+    assert isinstance(extract_job_postings(html), list)  # no exception, ever
+
+    shallow = 50
+    body = "[" * shallow + json.dumps({"@type": "JobPosting", "title": "Deep Intern"})
+    body += "]" * shallow
     html = f'<script type="application/ld+json">{body}</script>'
     assert [posting["title"] for posting in extract_job_postings(html)] == ["Deep Intern"]
 
