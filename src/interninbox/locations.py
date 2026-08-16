@@ -43,6 +43,19 @@ _ALIAS_GROUPS: tuple[tuple[str, ...], ...] = (
 # codes are already anchored in _alias_map; this covers the alias groups.
 _ANCHOR_ONLY: frozenset[str] = frozenset({"us"})
 
+# Country-level US search. Boards almost always name a state or city, not
+# "United States", so filtering by the country has to reach any US location:
+# every state's full name (an unambiguous word) plus its comma-anchored code
+# (", CA" matches "Foster City, CA" but never prose), plus the country
+# spellings. The rare cost is a foreign "City, CA" (Canada) slipping in, far
+# better than missing the majority of US roles that never write the country.
+_US_TERMS: frozenset[str] = frozenset(
+    ["United States", "USA", ", US"]
+    + list(US_STATES)
+    + [f", {abbr}" for abbr in US_STATES.values()]
+)
+_US_TRIGGERS: frozenset[str] = frozenset({"united states", "usa", "us", "america"})
+
 
 def _anchor(term: str) -> str:
     return f", {term}" if term.lower() in _ANCHOR_ONLY else term
@@ -64,6 +77,10 @@ def _alias_map() -> dict[str, tuple[str, ...]]:
     for group in _ALIAS_GROUPS:
         for term in group:
             groups.setdefault(term.lower(), set()).update(set(group) - {term})
+    # Country -> every US location term. Overrides the plain US/USA/United
+    # States group above so the country reaches state-only board strings.
+    for trigger in _US_TRIGGERS:
+        groups[trigger] = set(_US_TERMS)
     return {key: tuple(sorted(values)) for key, values in groups.items()}
 
 
