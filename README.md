@@ -13,18 +13,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
 [![No API keys](https://img.shields.io/badge/API%20keys-none-16a34a.svg)](#configuration)
 
+<img src="https://raw.githubusercontent.com/hiratinspace/interninbox/main/assets/demo.gif" alt="interninbox scanning company job boards and listing four current software internships" width="960">
+
 </div>
-
-```console
-$ interninbox scan --new-only
-
-COMPANY   TITLE                                   LOCATIONS       POSTED      URL
-stripe    Software Engineering Intern (Summer)    New York, NY    2026-08-01  https://stripe.com/jobs/...
-linear    Product Engineering Intern              Remote          2026-07-28  https://jobs.ashbyhq.com/linear/...
-plaid     Data Science Intern                     San Francisco   -           https://jobs.lever.co/plaid/...
-
-3 internships across 3 companies
-```
 
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
