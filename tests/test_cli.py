@@ -1167,3 +1167,100 @@ def test_watch_refuses_without_a_terminal(
     assert hosts == []  # refused before a single request
     assert "scan --new-only" in captured.err
     assert "cron" in captured.err
+
+
+# ---- quick scan flags: --role / --location / --company / --registry / --source ----
+
+def test_scan_company_and_role_flags_need_no_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "none.toml"
+    code = main(
+        ["scan", "--config", str(missing),
+         "--company", "greenhouse:aurora-widgets", "--role", "software"],
+        transport=make_transport(route), **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Software Engineering Intern (Summer 2027)" in out
+    assert "Cartography Engineering Intern" not in out  # only the one board scanned
+
+
+def test_scan_role_flag_overrides_config_roles(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = write_config(tmp_path, THREE_BOARDS + '\n[filters]\nroles = ["software"]\n')
+    code = main(
+        ["scan", "--config", str(config), "--role", "finance"],
+        transport=make_transport(route), **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    # The config's software roles were replaced by finance, so SWE interns drop.
+    assert "Software Engineering Intern (Summer 2027)" not in out
+
+
+def test_scan_location_flag_filters(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = ["scan", "--config", str(tmp_path / "none.toml"),
+            "--company", "greenhouse:aurora-widgets", "--role", "software"]
+    transport = make_transport(route)
+    assert main(base + ["--location", "New York"], transport=transport, **NO_SLEEP) == 0
+    assert "Software Engineering Intern (Summer 2027)" in capsys.readouterr().out
+    assert main(base + ["--location", "Antarctica"], transport=transport, **NO_SLEEP) == 0
+    assert "Software Engineering Intern (Summer 2027)" not in capsys.readouterr().out
+
+
+def test_scan_bad_company_flag_is_a_friendly_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml"), "--company", "not-a-real-form"],
+        transport=make_transport(route), **NO_SLEEP,
+    )
+    assert code == 1
+    assert "error:" in capsys.readouterr().err
+
+
+def test_scan_flags_skip_the_wizard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    def boom(_prompt: str) -> str:
+        raise AssertionError("the wizard must not run when quick flags are given")
+
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml"),
+         "--company", "greenhouse:aurora-widgets", "--role", "software", "-q"],
+        transport=make_transport(route), input_fn=boom, **NO_SLEEP,
+    )
+    assert code == 0
+
+
+def test_scan_source_flag_scans_a_community_list(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml"), "--source", "simplify"],
+        transport=make_transport(route), **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "1 list" in out
+
+
+def test_scan_flag_only_run_defaults_to_the_top_registry(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # No config, no --company, no --registry: filtering alone should still scan
+    # something useful (the top tier) rather than reporting zero companies.
+    code = main(
+        ["scan", "--config", str(tmp_path / "none.toml"), "--role", "software"],
+        transport=make_transport(route), **NO_SLEEP,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "across 0 companies" not in out  # it picked a registry tier to scan
