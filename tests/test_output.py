@@ -180,6 +180,7 @@ def test_json_includes_eligibility_metadata() -> None:
         listings=[
             make_listing(
                 sponsorship="offers-sponsorship",
+                sponsorship_evidence="Visa sponsorship is available for this role.",
                 terms=("Summer 2027",),
             )
         ],
@@ -187,7 +188,14 @@ def test_json_includes_eligibility_metadata() -> None:
     )
     item = json.loads(format_json(result))["listings"][0]
     assert item["sponsorship"] == "offers-sponsorship"
+    assert item["sponsorship_evidence"] == "Visa sponsorship is available for this role."
     assert item["terms"] == ["Summer 2027"]
+
+
+def test_json_sponsorship_evidence_is_null_when_unknown() -> None:
+    result = ScanResult(listings=[make_listing()], companies_scanned=1)
+    item = json.loads(format_json(result))["listings"][0]
+    assert item["sponsorship_evidence"] is None
 
 
 def test_table_hyperlinks_wrap_urls_only_when_asked() -> None:

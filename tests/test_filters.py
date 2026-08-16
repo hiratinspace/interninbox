@@ -188,6 +188,18 @@ def test_degrees_filter_keeps_matches_and_unknowns() -> None:
     assert matches(make_listing(degrees=()), filters)
 
 
+def test_employment_intern_counts_as_an_internship_signal() -> None:
+    # An ATS-declared internship (employment_type_code and friends) passes
+    # even when the title says intern in no language we parse.
+    listing = make_listing(title="Strategy - Early Careers Programme", employment_intern=True)
+    assert matches(listing, Filters())
+    assert not matches(make_listing(title="Strategy - Early Careers Programme"), Filters())
+    # The staff-role exclusion still applies: a role about interns is not
+    # for interns, whatever the employment type claims.
+    staffed = make_listing(title="Internship Programme Manager", employment_intern=True)
+    assert not matches(staffed, Filters())
+
+
 def test_curated_listing_bypasses_title_heuristics() -> None:
     # A curated list entry needs no intern-word and skips the staff filter...
     assert matches(make_listing(title="2027 Technology Analyst Program", curated=True), Filters())

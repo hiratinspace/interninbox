@@ -7,12 +7,17 @@ from interninbox.discover import find_boards
 
 
 def _acme_transport():
-    """acmecorp exists on Greenhouse; AcmeCorp is a real SR tenant."""
+    """acmecorp exists on Greenhouse, Workable, and Recruitee; AcmeCorp is a
+    real SR tenant."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         host, path = request.url.host, request.url.path
         if host == "boards-api.greenhouse.io" and "/acmecorp/" in path:
             return json_response({"jobs": []})
+        if host == "www.workable.com" and path == "/api/accounts/acmecorp":
+            return json_response({"name": "Acme Corp", "jobs": []})
+        if host == "acmecorp.recruitee.com" and path == "/api/offers/":
+            return json_response({"offers": []})
         if host == "api.smartrecruiters.com" and "/AcmeCorp/" in path:
             return json_response({"totalFound": 12, "content": []})
         if host == "api.smartrecruiters.com":
@@ -26,6 +31,8 @@ def test_finds_boards_across_ats(instant_fetcher) -> None:
     with instant_fetcher(_acme_transport()) as fetcher:
         found = find_boards(fetcher, "Acme Corp")
     assert "greenhouse:acmecorp" in found
+    assert "workable:acmecorp" in found  # Workable 404s unknowns, so 200 is a hit
+    assert "recruitee:acmecorp" in found  # Recruitee 404s unknowns too
     assert "smartrecruiters:AcmeCorp" in found
     # SR with totalFound 0 and 404 hosts are not reported.
     assert not any(label.startswith(("lever:", "ashby:")) for label in found)

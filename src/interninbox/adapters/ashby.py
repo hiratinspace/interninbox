@@ -84,7 +84,7 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
 
     title = str(job["title"])
     description = job.get("descriptionHtml") or ""
-    sponsorship = eligibility.classify_sponsorship(
+    sponsorship, evidence = eligibility.classify_sponsorship_with_evidence(
         eligibility.text_from_html(str(description))
     )
 
@@ -97,5 +97,6 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
         locations=tuple(locations),
         posted_at=posted_at,
         sponsorship=sponsorship,
+        sponsorship_evidence=evidence,
         terms=eligibility.derive_terms(title),
     )

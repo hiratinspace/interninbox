@@ -81,7 +81,7 @@ def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
 
     title = str(posting["text"])
     description = posting.get("descriptionPlain") or posting.get("description") or ""
-    sponsorship = eligibility.classify_sponsorship(str(description))
+    sponsorship, evidence = eligibility.classify_sponsorship_with_evidence(str(description))
 
     return Listing(
         company=slug,
@@ -92,5 +92,6 @@ def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
         locations=tuple(locations),
         posted_at=posted_at,
         sponsorship=sponsorship,
+        sponsorship_evidence=evidence,
         terms=eligibility.derive_terms(title),
     )

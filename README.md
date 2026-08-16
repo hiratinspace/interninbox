@@ -28,7 +28,8 @@ plaid     Data Science Intern                     San Francisco   -           ht
 
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
-board APIs of **Greenhouse**, **Lever**, **Ashby**, and **SmartRecruiters**
+board APIs of **Greenhouse**, **Lever**, **Ashby**, **SmartRecruiters**,
+**Workable**, and **Recruitee**
 (the same endpoints each company's own careers page calls). It can also read
 the official **USAJOBS** API for federal Pathways internships.
 
@@ -42,6 +43,7 @@ the official **USAJOBS** API for federal Pathways internships.
 - 🏢 **100+ curated companies.** Big and small, every slug live-verified. Scan your own list, or sweep a whole tier of the registry.
 - 🧭 **First-run wizard.** No config? Answer three questions, get results, and optionally save them for next time.
 - 📬 **A personal feed.** `--new-only` shows just what appeared since your last scan; run it on a schedule and it becomes your morning internship digest.
+- 🤖 **Built for the AI era.** AI answers questions about internships; interninbox watches all of them. One command ([`interninbox mcp`](#use-interninbox-from-your-ai)) hands the whole scanner to Claude or any MCP-capable agent.
 - 🤝 **Polite by construction.** Sequential, rate-limited requests, an honest User-Agent, documented public APIs only. No scraping.
 
 ## Install
@@ -108,6 +110,8 @@ your last scan.
 | `interninbox companies` | Print the curated [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
 | `interninbox roles` | Print the [role presets](#role-presets) and the exact keywords each expands to |
 | `interninbox find-board NAME` | Probe the supported ATSes for a company's board slug and print ready-to-paste `"ats:slug"` lines |
+| `interninbox mcp` | Serve the scanner to [AI agents over MCP](#use-interninbox-from-your-ai) (JSON-RPC on stdin/stdout; meant for MCP clients, not for typing into) |
+| `interninbox watch` | Re-scan on an interval in the foreground with a desktop notification per batch of new listings ([watch mode](#watch-mode); needs a terminal, cron users keep `scan --new-only`) |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -204,7 +208,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, or `ashby` |
+| `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, or `website` (slug = a bare domain, see [Scanning a company website](#scanning-a-company-website)) |
 | `registry` | `"none"`, `"top"`, `"all"`, `"large"`, `"startups"` | `"none"` | Also scan the curated [registry](#the-company-registry); unioned with `companies` (duplicates removed) |
 | `sources` | list of strings | `[]` | [Community lists](#community-list-sources) to scan too: `"simplify"` (current season) or `"simplify-summer2026"` / `"simplify-summer2027"` to pin one |
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal (broadens) |
@@ -234,12 +238,49 @@ Open a company's careers page and read the URL of an actual job listing:
 | `jobs.lever.co/acme/...` | `"lever:acme"` |
 | `jobs.ashbyhq.com/acme/...` | `"ashby:acme"` |
 | `jobs.smartrecruiters.com/AcmeCorp/...` | `"smartrecruiters:AcmeCorp"` |
+| `apply.workable.com/acme/j/...` | `"workable:acme"` |
+| `acme.recruitee.com/o/...` | `"recruitee:acme"` |
+| any other careers site | `"website:careers.acme.com"` (the page's own domain) |
 
-Or let the tool guess: `interninbox find-board "Acme Corp"` probes all four
+Or let the tool guess: `interninbox find-board "Acme Corp"` probes all six
 ATSes with the obvious slug candidates and prints whatever answers. If a scan
 reports `HTTP 404 from <host>: check the slug exists`, the slug is wrong or
 the company changed ATS providers. `interninbox companies` lists the full
 registry of known-good entries to start from.
+
+### Scanning a company website
+
+Companies without a supported ATS often still publish their jobs as
+machine-readable structured data for search engines. `website:<domain>` reads
+exactly that public surface, no private APIs and no HTML scraping:
+
+1. **robots.txt** is fetched first with the tool's honest User-Agent. Pages it
+   disallows are skipped (and counted in a warning); if robots.txt itself
+   cannot be read (a 403, say), the whole site is refused, because scanning
+   without permission would be impolite.
+2. **Sitemaps** named in robots.txt (or `/sitemap.xml` as the fallback) are
+   walked for job-looking URLs, with hard caps: at most 20 child sitemaps,
+   two levels of sitemap-index nesting, and at most 200 page fetches per site
+   per scan, each cap announced honestly when hit.
+3. **JSON-LD `JobPosting` blocks** embedded in each page (the schema.org data
+   sites publish for Google Jobs) become listings: title, location, posted
+   date, and the description feeds the same sponsorship classifier as every
+   other adapter. Postings past their `validThrough` date are dropped.
+
+Results are cached per site, keyed by sitemap `lastmod`, so rescans refetch
+only changed pages. Sequential polite pacing still applies: a first scan of a
+big site takes a few minutes by design.
+
+Limits worth knowing: sites that render jobs purely client-side (for example
+lifeattiktok.com, jobs.bytedance.com, most iCIMS tenants) publish no
+server-side JSON-LD and yield nothing; sites that block automated requests
+(www.tesla.com) or disallow crawling in robots.txt are respected and skipped.
+Workday-hosted boards (`something.wd1.myworkdayjobs.com`) and WordPress-style
+career sites generally work end to end:
+
+```toml
+companies = ["website:psu.wd1.myworkdayjobs.com"]
+```
 
 ## How matching works
 
@@ -352,9 +393,10 @@ degrees = ["Bachelor's"]
 
 - **`require_sponsorship = true`** hides listings *known* to not sponsor
   visas or to require US citizenship. Signals come from community-list
-  metadata and from the job description itself: Lever and Ashby include
-  descriptions in their normal responses, and Greenhouse descriptions are
-  fetched (only when this filter is on, since they inflate each board fetch).
+  metadata and from the job description itself: Lever, Ashby, and Recruitee
+  include descriptions in their normal responses, and Greenhouse and Workable
+  descriptions are fetched (only when this filter is on, since they inflate
+  each board fetch).
   Classification is requirement-aware and sentence-scoped: "unable to
   sponsor", "must not require sponsorship", "US citizenship is required", and
   clearance/ITAR *requirements* disqualify, while hedged mentions ("clearance
@@ -370,7 +412,11 @@ degrees = ["Bachelor's"]
   carry this metadata). Unknown passes.
 
 The same data flows into `--json` output as `sponsorship` and `terms` fields
-on every listing, so scripts can post-process it.
+on every listing, so scripts can post-process it. Each verdict also carries a
+`sponsorship_evidence` field showing where it came from: the description
+sentence that triggered it (trimmed to 160 characters), the list's own
+metadata value (like `list: "Does Not Offer Sponsorship"`), or
+`federal Pathways position` for USAJOBS. Unknown verdicts have no evidence.
 
 ## `--new-only` and the state file
 
@@ -386,7 +432,76 @@ hid it, so loosening a filter later won't flood `--new-only` with old posts.
 - `init` writes only the TOML; if your config lives in a git repo, add `.interninbox-state.json` to your `.gitignore` yourself.
 
 Run it on a schedule (cron, launchd, a shell alias) and `--new-only` becomes a
-personal internship feed.
+personal internship feed. Prefer a terminal that watches itself? That is
+[watch mode](#watch-mode).
+
+## Watch mode
+
+`interninbox watch` closes the freshness loop: it runs the same scan as
+`scan --new-only` in a foreground loop, prints one timestamped line per cycle,
+shows new listings as the usual table, and sends a desktop notification per
+non-empty batch ("interninbox: 2 new internships"). State is shared with
+`scan`, so a watch picks up exactly where your last scan left off, and a later
+`scan --new-only` knows what watch already showed you.
+
+```sh
+interninbox watch                  # check every 30 minutes
+interninbox watch --interval 2h    # or on your own schedule
+interninbox watch --no-notify      # per-cycle lines and tables only
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--interval WINDOW` | Time between checks (`30m`, `2h`, `1d`; default `30m`, hard floor `15m`) |
+| `--no-notify` | Skip desktop notifications; keep the per-cycle lines and tables |
+| `--config PATH`, `--state PATH` | Same meaning as for `scan` |
+
+Notifications are best effort: `osascript` on macOS, `notify-send` on Linux, a
+PowerShell toast on Windows, and a missing or broken notifier never interrupts
+the loop. Stop with Ctrl-C.
+
+Politeness does not bend for watch. Every cycle goes through the same
+sequential, rate-limited fetcher as a one-shot scan, and the interval has a
+hard floor of 15 minutes (`--interval 5m` is refused with an explanation): job
+boards do not change more often than that, and neither should your traffic.
+This is local polling, not a push feed, and interninbox is honest about it.
+
+Watch is a foreground loop for a real terminal, not a daemon; without a
+terminal it exits and points you here. For unattended schedules (servers,
+cron, launchd), `interninbox scan --new-only` does the same diff without the
+loop:
+
+```
+*/30 * * * * cd ~/internships && interninbox scan --new-only --quiet
+```
+
+## Use interninbox from your AI
+
+`interninbox mcp` serves the scanner to AI agents over the
+[Model Context Protocol](https://modelcontextprotocol.io): newline-delimited
+JSON-RPC on stdin/stdout, nothing else on either stream. Register it with
+Claude Code in one command:
+
+```sh
+claude mcp add interninbox -- interninbox mcp
+```
+
+Then ask in plain language ("any new software internships in New York this
+week that sponsor visas?") and the agent runs real scans on your machine.
+The server exposes three tools:
+
+| Tool | What it exposes |
+| --- | --- |
+| `scan_internships` | The same scan core as the CLI. Parameters mirror the config file: `roles`, `locations`, `terms`, `require_sponsorship`, `registry` tier, `sources`, extra `companies` as `ats:slug`, a `since` window, and a result `limit`. Returns listings in the `--json` shape, including `sponsorship_evidence`, the sentence behind every visa verdict, so the agent can cite its source |
+| `list_role_presets` | The named [role presets](#role-presets) and the exact keywords each expands to |
+| `find_board` | Probes the supported ATSes for a company's board slug, ready to feed back into `scan_internships` |
+
+The politeness rules do not bend for agents: every tool call goes through the
+same sequential, rate-limited fetcher as a normal scan, with no API keys and
+no telemetry. MCP scans are also stateless by design: they never read or
+write your `--new-only` state file, so an agent poking around can never eat
+the listings from your personal feed. Any MCP-capable client works, not just
+Claude; point it at the `interninbox mcp` command over stdio.
 
 ## USAJOBS (optional)
 
@@ -425,20 +540,23 @@ public APIs are used, with no HTML scraping and nothing behind a login.
 
 ## Scope, honestly
 
-This tool does **one-shot local scans**. That is its whole job, done politely
-and fast. It deliberately does *not* verify a listing is still live,
-deduplicate reposts across boards, watch continuously, or apply for you.
+This tool does **local scans**: one-shot with `scan`, or on a polite loop with
+a 15 minute floor with [`watch`](#watch-mode). That is its whole job, done
+politely and fast. It deliberately does *not* verify a listing is still live,
+deduplicate reposts across boards, run as a background daemon, or apply for
+you.
 
 Title-only matching also misses some real internships: bare "Trainee", titles
 like "Software Engineer (Intern) II" (the seniority filter wins), and languages
 beyond the built-in German/French patterns. `include_keywords` can widen the
-net. Continuous verification, curation, and instant alerts are what the hosted
-Interninbox product (coming soon) does. This CLI is the honest local version:
-you run it, you own your data, and nothing phones home.
+net. Continuous verification, curation, and instant push alerts are what the
+hosted Interninbox product (coming soon) does. This CLI is the honest local
+version: you run it, you own your data, and nothing phones home.
 
 ## FAQ
 
-**Why these ATSes?** Greenhouse, Lever, Ashby, and SmartRecruiters expose
+**Why these ATSes?** Greenhouse, Lever, Ashby, SmartRecruiters, Workable, and
+Recruitee expose
 documented public board APIs designed for exactly this, and the community
 list covers employers on everything else. PRs welcome for any source with a
 documented public API.
@@ -449,8 +567,9 @@ and the local state file. There is no telemetry of any kind.
 **A company I added returns 404.** The slug is wrong or the company changed ATS
 providers. See [Finding a company's slug](#finding-a-companys-slug).
 
-**Can it email or notify me?** Not built in. Pipe `--json` into whatever you
-like, or run it on a schedule with `--new-only` and a mail hook.
+**Can it email or notify me?** Desktop notifications, yes: that is
+[watch mode](#watch-mode). Email is not built in; pipe `--json` into whatever
+you like, or run `scan --new-only` on a schedule with a mail hook.
 
 ## Development
 

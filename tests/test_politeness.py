@@ -210,6 +210,68 @@ def test_per_call_max_response_bytes_override() -> None:
             fetcher.get_json("https://api.lever.co/v0/postings/one")
 
 
+def test_get_text_returns_body_and_shares_the_host_delay() -> None:
+    clock = FakeClock()
+    sleeps: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        clock.now += 0.1  # each request takes 100 ms
+        return httpx.Response(200, text="Sitemap: https://example.test/sitemap.xml\n")
+
+    with _fetcher(handler, clock, sleeps) as fetcher:
+        body = fetcher.get_text("https://example.test/robots.txt")
+        fetcher.get_text("https://example.test/sitemap.xml")
+    assert "Sitemap:" in body
+    # Text fetches obey the same per-host pacing as JSON fetches.
+    assert len(sleeps) == 1
+    assert sleeps[0] == pytest.approx(0.4)
+
+
+def test_get_text_sends_the_honest_user_agent() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, text="ok")
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        fetcher.get_text("https://example.test/robots.txt")
+    assert seen[0].headers["User-Agent"] == USER_AGENT
+
+
+def test_get_text_4xx_raises_adapter_error() -> None:
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(403)), sleep=lambda _: None
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="request refused"):
+            fetcher.get_text("https://example.test/robots.txt")
+
+
+def test_get_text_retries_transient_5xx_once() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(502)
+        return httpx.Response(200, text="recovered")
+
+    with Fetcher(transport=make_transport(handler), sleep=lambda _: None) as fetcher:
+        assert fetcher.get_text("https://example.test/sitemap.xml") == "recovered"
+    assert len(calls) == 2
+
+
+def test_get_text_respects_the_size_cap() -> None:
+    big = "x" * 2048
+    with Fetcher(
+        transport=make_transport(lambda _: httpx.Response(200, text=big)),
+        sleep=lambda _: None,
+        max_response_bytes=1024,
+    ) as fetcher:
+        with pytest.raises(AdapterError, match="larger than"):
+            fetcher.get_text("https://example.test/page")
+
+
 def test_conditional_get_sends_etag_and_handles_304() -> None:
     calls: list[httpx.Request] = []
 

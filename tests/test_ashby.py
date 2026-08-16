@@ -63,6 +63,14 @@ def test_description_html_is_classified_and_terms_derived() -> None:
     assert by_title["Design Intern"].sponsorship is None
 
 
+def test_sponsorship_evidence_is_the_triggering_sentence() -> None:
+    listings = ashby.parse(load_fixture("ashby/harborline.json"), "harborline")
+    by_title = {listing.title: listing for listing in listings}
+    evidence = by_title["Platform Engineering Intern (Fall)"].sponsorship_evidence
+    assert evidence == "We are able to sponsor work visas."  # HTML stripped
+    assert by_title["Design Intern"].sponsorship_evidence is None  # unknown
+
+
 def test_fetch_allows_description_heavy_boards() -> None:
     from interninbox.fetch import Fetcher
 

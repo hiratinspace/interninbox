@@ -6,11 +6,26 @@ act on; the CLI prints it and exits non-zero, never a traceback.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
-KNOWN_ATS = ("greenhouse", "lever", "ashby", "smartrecruiters")
+KNOWN_ATS = (
+    "greenhouse",
+    "lever",
+    "ashby",
+    "smartrecruiters",
+    "workable",
+    "recruitee",
+    "website",
+)
+
+# The "website" pseudo-ATS takes a bare domain: labels separated by dots,
+# no scheme, no path, no leading or trailing hyphens in a label.
+_WEBSITE_DOMAIN = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+)
 
 DEFAULT_CONFIG_NAME = "interninbox.toml"
 
@@ -80,6 +95,13 @@ def parse_company(entry: object) -> Company:
         raise ConfigError(
             f"unknown ATS {ats!r} in company entry {entry!r}; supported: {known}"
         )
+    if ats == "website":
+        slug = slug.lower()
+        if not _WEBSITE_DOMAIN.match(slug):
+            raise ConfigError(
+                f"website entry {entry!r} must use a bare domain like "
+                '"website:careers.example.com" (no scheme, no path)'
+            )
     return Company(ats=ats, slug=slug)
 
 
@@ -231,6 +253,10 @@ STARTER_CONFIG = """\
 #   jobs.lever.co/<slug>             ->  "lever:<slug>"
 #   jobs.ashbyhq.com/<slug>          ->  "ashby:<slug>"
 #   jobs.smartrecruiters.com/<slug>  ->  "smartrecruiters:<slug>"
+#   apply.workable.com/<slug>        ->  "workable:<slug>"
+#   <slug>.recruitee.com/o/...       ->  "recruitee:<slug>"
+# Any other careers site that publishes jobs as schema.org JSON-LD:
+#   "website:<domain>" (a bare domain, e.g. "website:careers.example.com")
 # Or let `interninbox find-board "Acme Corp"` guess the slug for you.
 # `interninbox companies` prints a starter list of well-known companies.
 companies = [

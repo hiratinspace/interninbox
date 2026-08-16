@@ -144,6 +144,12 @@ def _parse_entry(entry: object, spec: Source) -> Listing | None:
     if isinstance(date_posted, int) and not isinstance(date_posted, bool) and date_posted > 0:
         posted_at = dt.datetime.fromtimestamp(date_posted, tz=dt.UTC)
 
+    raw_sponsorship = str(entry.get("sponsorship", ""))
+    sponsorship = _SPONSORSHIP_MAP.get(raw_sponsorship)
+    # Provenance is the list's own words; unmapped values stay unknown with
+    # no evidence.
+    evidence = f'list: "{raw_sponsorship}"' if sponsorship is not None else None
+
     return Listing(
         company=str(company),
         source=spec.family,
@@ -153,7 +159,8 @@ def _parse_entry(entry: object, spec: Source) -> Listing | None:
         locations=_str_tuple(entry.get("locations")),
         posted_at=posted_at,
         identity=f"{spec.family}:{listing_id}",
-        sponsorship=_SPONSORSHIP_MAP.get(str(entry.get("sponsorship", ""))),
+        sponsorship=sponsorship,
+        sponsorship_evidence=evidence,
         terms=_str_tuple(entry.get("terms")) or eligibility.derive_terms(str(title)),
         degrees=_str_tuple(entry.get("degrees")),
         curated=True,

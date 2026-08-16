@@ -76,10 +76,10 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
     title = str(job["title"])
     # `content` is present only when fetched with content=true; it arrives
     # HTML-escaped ("&lt;p&gt;...").
-    sponsorship = None
+    sponsorship = evidence = None
     raw_content = job.get("content")
     if isinstance(raw_content, str) and raw_content:
-        sponsorship = eligibility.classify_sponsorship(
+        sponsorship, evidence = eligibility.classify_sponsorship_with_evidence(
             eligibility.text_from_html(raw_content, escaped=True)
         )
 
@@ -92,5 +92,6 @@ def _parse_job(job: dict[str, object], slug: str) -> Listing:
         locations=locations,
         posted_at=posted_at,
         sponsorship=sponsorship,
+        sponsorship_evidence=evidence,
         terms=eligibility.derive_terms(title),
     )

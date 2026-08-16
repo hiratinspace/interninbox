@@ -18,6 +18,10 @@ _PROBES = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
     "lever": "https://api.lever.co/v0/postings/{slug}?mode=json",
     "ashby": "https://api.ashbyhq.com/posting-api/job-board/{slug}",
+    # Workable answers a clean 404 for unknown slugs, so a plain 200 is a hit.
+    "workable": "https://www.workable.com/api/accounts/{slug}",
+    # Recruitee also 404s unknown tenants (empty boards still answer 200).
+    "recruitee": "https://{slug}.recruitee.com/api/offers/",
 }
 _SR_PROBE = "https://api.smartrecruiters.com/v1/companies/{slug}/postings?limit=1"
 

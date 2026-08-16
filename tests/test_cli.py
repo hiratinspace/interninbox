@@ -1,7 +1,9 @@
 """End-to-end CLI tests through main() with an injected MockTransport."""
 
+import io
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx
@@ -749,6 +751,88 @@ def test_smartrecruiters_scan_end_to_end(
     assert "jobs.smartrecruiters.com/MeridianPay/744000900000001" in out
 
 
+def test_workable_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def workable_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "www.workable.com":
+            return json_response(load_fixture("workable/meadowbrook.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["workable:meadowbrook-robotics"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(workable_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Robotics Software Intern (Summer 2027)" in out
+    assert "Machine Learning Intern" in out
+    assert "Senior Controls Engineer" not in out  # staff filter still applies
+    assert "apply.workable.com/j/AB12CD3" in out
+
+
+def test_recruitee_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def recruitee_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "silverfen.recruitee.com":
+            return json_response(load_fixture("recruitee/silverfen.json"))
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["recruitee:silverfen"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(recruitee_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Pipeline Developer Intern (Summer 2027)" in out
+    # No intern word in the title: employment_type_code carries the signal.
+    assert "Strategy - Early Careers Programme" in out
+    assert "Senior Compositor" not in out  # staff filter still applies
+    assert "silverfen.recruitee.com/o/pipeline-developer-intern-summer-2027" in out
+
+
+def test_website_scan_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    robots = "User-agent: *\nSitemap: https://careers.example-co.test/job-sitemap.xml\n"
+    sitemap = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        "<url><loc>https://careers.example-co.test/roles/77-orbit-intern</loc></url>"
+        "</urlset>"
+    )
+    posting = {
+        "@type": "JobPosting",
+        "title": "Orbit Dynamics Intern",
+        "datePosted": "2026-08-01",
+        "jobLocation": {"address": {"addressLocality": "State College", "addressRegion": "PA"}},
+    }
+    page = f'<html><script type="application/ld+json">{json.dumps(posting)}</script></html>'
+
+    def website_route(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "careers.example-co.test":
+            body = {
+                "/robots.txt": robots,
+                "/job-sitemap.xml": sitemap,
+                "/roles/77-orbit-intern": page,
+            }.get(request.url.path)
+            if body is None:
+                return httpx.Response(404)
+            return httpx.Response(200, text=body)
+        return route(request)
+
+    config = write_config(tmp_path, 'companies = ["website:careers.example-co.test"]\n')
+    code = main(
+        ["scan", "--config", str(config)], transport=make_transport(website_route), **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Orbit Dynamics Intern" in out
+    assert "careers.example-co.test/roles/77-orbit-intern" in out
+
+
 def test_find_board_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "boards-api.greenhouse.io" and "/acme/" in request.url.path:
@@ -814,6 +898,7 @@ def test_dedupe_merges_board_and_list_versions() -> None:
         source="simplify",
         url="https://jobs.example.test/acme/123/",
         sponsorship="offers-sponsorship",
+        sponsorship_evidence='list: "Offers Sponsorship"',
         degrees=("Bachelor's",),
         curated=True,
     )
@@ -824,6 +909,7 @@ def test_dedupe_merges_board_and_list_versions() -> None:
     kept = deduped[0]
     assert kept.listing_id == "gh1"  # the direct board version wins...
     assert kept.sponsorship == "offers-sponsorship"  # ...but inherits list metadata
+    assert kept.sponsorship_evidence == 'list: "Offers Sponsorship"'  # evidence travels too
     assert kept.degrees == ("Bachelor's",)
 
 
@@ -840,3 +926,244 @@ def test_board_plus_list_overlap_shows_one_row(
     assert len(design) == 1  # the list duplicate collapsed into the board row
     assert design[0]["source"] == "ashby"
     assert design[0]["sponsorship"] == "offers-sponsorship"  # inherited from the list
+
+
+# --- the mcp subcommand -------------------------------------------------------
+
+
+def _feed_stdin(monkeypatch: pytest.MonkeyPatch, messages: list[dict]) -> None:
+    """Point sys.stdin at a stream of newline-delimited JSON-RPC messages."""
+    text = "".join(json.dumps(message) + "\n" for message in messages)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(text))
+
+
+def test_mcp_stdout_carries_only_protocol_lines(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_tty(monkeypatch)  # even on a terminal: no banner, silent stderr
+    _feed_stdin(monkeypatch, [
+        {"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+            "protocolVersion": "2024-11-05", "capabilities": {},
+            "clientInfo": {"name": "test-client", "version": "0.0.1"},
+        }},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    ])
+    code = main(["mcp"], **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 0  # EOF ends the loop cleanly
+    assert captured.err == ""
+    lines = captured.out.splitlines()
+    assert len(lines) == 2  # one response per request, nothing else on stdout
+    replies = [json.loads(line) for line in lines]
+    assert replies[0]["id"] == 0
+    assert replies[0]["result"]["serverInfo"]["name"] == "interninbox"
+    assert replies[1]["id"] == 1
+    tool_names = {tool["name"] for tool in replies[1]["result"]["tools"]}
+    assert tool_names == {"scan_internships", "list_role_presets", "find_board"}
+
+
+def test_mcp_scan_tool_uses_the_injected_transport(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _feed_stdin(monkeypatch, [
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
+            "name": "scan_internships",
+            "arguments": {
+                "companies": ["ashby:harborline"], "registry": "none", "sources": [],
+            },
+        }},
+    ])
+    code = main(["mcp"], transport=make_transport(route), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.err == ""
+    reply = json.loads(captured.out.splitlines()[0])
+    payload = json.loads(reply["result"]["content"][0]["text"])
+    titles = [listing["title"] for listing in payload["listings"]]
+    assert "Platform Engineering Intern (Fall)" in titles
+
+
+def test_mcp_ctrl_c_exits_cleanly_and_silently(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class CtrlCStdin:
+        def readline(self) -> str:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(sys, "stdin", CtrlCStdin())
+    code = main(["mcp"], **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 130
+    assert captured.out == ""  # never a partial protocol line
+    assert captured.err == ""  # no "interrupted" noise for MCP clients
+
+
+# --- the watch subcommand -----------------------------------------------------
+
+
+class _TTYStdin:
+    """A stand-in stdin that claims to be a terminal (watch never reads it)."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def _force_watch_tty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """watch requires both stdin and stderr to be terminals."""
+    _force_tty(monkeypatch)
+    monkeypatch.setattr(sys, "stdin", _TTYStdin())
+
+
+def _interval_capped_sleep(cycles: int) -> Callable[[float], None]:
+    """A sleep that ends the watch loop after `cycles` cycles.
+
+    Cycle-limit mechanism (recorded choice): the fetcher's politeness pauses
+    are under a second while the inter-cycle sleep is minutes, so any duration
+    of 60 seconds or more is the watch loop's own sleep. Raising
+    KeyboardInterrupt on the `cycles`-th one both caps the loop and observes
+    the clean Ctrl-C exit (130) on the same run.
+    """
+    seen: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        if seconds < 60:
+            return  # a politeness pause inside the Fetcher, not the interval
+        seen.append(seconds)
+        if len(seen) >= cycles:
+            raise KeyboardInterrupt
+
+    fake_sleep.intervals = seen  # type: ignore[attr-defined]
+    return fake_sleep
+
+
+def test_watch_two_cycles_notifies_once_and_persists_state(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import re
+
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+
+    ashby_requests = {"count": 0}
+
+    def cycling(request: httpx.Request) -> httpx.Response:
+        # From the second board fetch on, one brand-new intern role appears.
+        if request.url.host == "api.ashbyhq.com":
+            ashby_requests["count"] += 1
+            board = load_fixture("ashby/harborline.json")
+            if ashby_requests["count"] >= 2:
+                board["jobs"].append({
+                    "id": "1b2c3d4e-9999-4222-8333-444455556666",
+                    "title": "Tidepool Data Intern (Summer 2027)",
+                    "jobUrl": "https://jobs.example-ashby.test/harborline/9f8e7d6c",
+                    "location": "Seattle, WA",
+                    "publishedAt": "2026-08-14T09:00:00+00:00",
+                    "descriptionHtml": "<p>Fictional synthetic fixture text.</p>",
+                })
+            return json_response(board)
+        return route(request)
+
+    transport = make_transport(cycling)
+    # Seed the shared state with a plain scan: watch continues scan's feed.
+    assert main(["scan", "--config", str(config)], transport=transport, **NO_SLEEP) == 0
+    capsys.readouterr()
+
+    notifications: list[tuple[str, str]] = []
+    fake_sleep = _interval_capped_sleep(2)
+    code = main(
+        ["watch", "--config", str(config)],
+        transport=transport,
+        sleep=fake_sleep,
+        env={},
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
+    captured = capsys.readouterr()
+    assert code == 130  # the injected Ctrl-C ends the loop cleanly
+    # Exactly one notification: cycle 1 found nothing new, cycle 2 found one.
+    assert len(notifications) == 1
+    title, body = notifications[0]
+    assert title == "interninbox: 1 new internship"
+    assert "Tidepool Data Intern (Summer 2027)" in body
+    # One timestamped stderr line per cycle, with the new-count.
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] 0 new internships", captured.err)
+    assert re.search(r"\[\d{2}:\d{2}:\d{2}\] 1 new internship", captured.err)
+    # The non-empty batch is shown on stdout too.
+    assert "Tidepool Data Intern (Summer 2027)" in captured.out
+    # The default interval is 30 minutes, slept between the two cycles.
+    assert fake_sleep.intervals == [1800.0, 1800.0]  # type: ignore[attr-defined]
+
+    # State persisted between cycles and after exit: the listing cycle 2
+    # notified about is not "new" to a follow-up scan.
+    code = main(
+        ["scan", "--config", str(config), "--new-only"], transport=transport, **NO_SLEEP
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "0 internships" in out
+
+
+def test_watch_no_notify_suppresses_notifications(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    notifications: list[tuple[str, str]] = []
+    code = main(
+        ["watch", "--config", str(config), "--no-notify"],
+        transport=make_transport(route),
+        sleep=_interval_capped_sleep(1),
+        env={},
+        notifier=lambda title, body: notifications.append((title, body)),
+    )
+    captured = capsys.readouterr()
+    assert code == 130
+    assert notifications == []  # --no-notify: no desktop noise
+    # Fresh state: the first cycle still reports and shows everything as new.
+    assert "2 new internships" in captured.err
+    assert "Platform Engineering Intern (Fall)" in captured.out
+
+
+def test_watch_interval_floor_and_bad_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _force_watch_tty(monkeypatch)
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["watch", "--config", str(config), "--interval", "5m"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2  # argparse validation, before any request
+    assert "15m" in capsys.readouterr().err  # the floor is named, politely
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            ["watch", "--config", str(config), "--interval", "banana"],
+            transport=make_transport(route),
+            **NO_SLEEP,
+        )
+    assert excinfo.value.code == 2
+    assert "like 30m" in capsys.readouterr().err
+
+
+def test_watch_refuses_without_a_terminal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # capsys stderr (and pytest's stdin) are not terminals: watch must refuse
+    # before touching the network and point at the cron-friendly alternative.
+    config = write_config(tmp_path, 'companies = ["ashby:harborline"]')
+    hosts: list[str] = []
+
+    def tracking(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        return route(request)
+
+    code = main(["watch", "--config", str(config)], transport=make_transport(tracking), **NO_SLEEP)
+    captured = capsys.readouterr()
+    assert code == 1
+    assert hosts == []  # refused before a single request
+    assert "scan --new-only" in captured.err
+    assert "cron" in captured.err

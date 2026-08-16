@@ -54,9 +54,11 @@ def make_listing(
     locations: tuple[str, ...] = ("New York, NY",),
     posted_at: dt.datetime | None = None,
     sponsorship: str | None = None,
+    sponsorship_evidence: str | None = None,
     terms: tuple[str, ...] = (),
     degrees: tuple[str, ...] = (),
     curated: bool = False,
+    employment_intern: bool = False,
 ) -> Listing:
     return Listing(
         company=company,
@@ -67,7 +69,9 @@ def make_listing(
         locations=locations,
         posted_at=posted_at,
         sponsorship=sponsorship,
+        sponsorship_evidence=sponsorship_evidence,
         terms=terms,
         degrees=degrees,
         curated=curated,
+        employment_intern=employment_intern,
     )

@@ -126,6 +126,32 @@ class Fetcher:
         )
         return payload
 
+    def get_text(
+        self,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        follow_redirects: bool = True,
+        max_response_bytes: int | None = None,
+    ) -> str:
+        """GET `url` and return the body as text (UTF-8, lossy on bad bytes).
+
+        The sibling of `get_json` for robots.txt, sitemaps, and HTML pages:
+        the same politeness loop (per-host delay, timeout, one retry, honest
+        User-Agent), just without the JSON parse.
+        """
+        body, _etag = self._get_bytes(
+            url,
+            etag=None,
+            params=params,
+            headers=headers,
+            follow_redirects=follow_redirects,
+            max_response_bytes=max_response_bytes,
+        )
+        assert body is not None  # no etag was sent, so a 304 cannot happen
+        return body.decode("utf-8", errors="replace")
+
     def get_json_conditional(
         self,
         url: str,
@@ -141,6 +167,30 @@ class Fetcher:
         Passing the previously seen `etag` sends If-None-Match; a 304 answer
         means the caller's cached copy is still current, sparing the transfer.
         """
+        host = urllib.parse.urlsplit(url).netloc
+        body, response_etag = self._get_bytes(
+            url,
+            etag=etag,
+            params=params,
+            headers=headers,
+            follow_redirects=follow_redirects,
+            max_response_bytes=max_response_bytes,
+        )
+        if body is None:  # 304: the caller's cached copy is current
+            return None, response_etag
+        return _parse_json(body, host), response_etag
+
+    def _get_bytes(
+        self,
+        url: str,
+        *,
+        etag: str | None,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        follow_redirects: bool = True,
+        max_response_bytes: int | None = None,
+    ) -> tuple[bytes | None, str | None]:
+        """The one polite GET loop: (body, response ETag), (None, etag) on 304."""
         host = urllib.parse.urlsplit(url).netloc
         request_headers = dict(headers or {})
         if etag:
@@ -176,7 +226,7 @@ class Fetcher:
             except httpx.HTTPError as exc:
                 last_error = f"network error: {exc}"
                 continue  # transient, retry once
-            return _parse_json(body, host), response_etag
+            return body, response_etag
         raise AdapterError(f"{last_error} (after retry)")
 
     def _read_limited(

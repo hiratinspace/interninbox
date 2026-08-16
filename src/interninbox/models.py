@@ -23,11 +23,19 @@ class Listing:
     # Eligibility signals (see eligibility.py); None / empty means unknown,
     # and unknown never causes a listing to be dropped.
     sponsorship: str | None = None
+    # Provenance for the sponsorship verdict: the description sentence that
+    # triggered it (trimmed to 160 chars), or the literal list-metadata value.
+    sponsorship_evidence: str | None = None
     terms: tuple[str, ...] = ()
     degrees: tuple[str, ...] = ()
     # True for listings from a curated internship list: the internship-signal
     # and staff-role title heuristics are skipped (curation already did that).
     curated: bool = False
+    # True when the source itself declares the role an internship (Recruitee's
+    # employment_type_code, schema.org employmentType): an extra internship
+    # signal for titles that say intern in no parseable language. The
+    # staff-role exclusion still applies.
+    employment_intern: bool = False
 
     @property
     def key(self) -> str:

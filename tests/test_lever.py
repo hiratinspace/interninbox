@@ -78,6 +78,16 @@ def test_description_plain_is_classified() -> None:
     assert by_title["Geospatial Data Intern"].sponsorship is None  # no description, unknown
 
 
+def test_sponsorship_evidence_is_the_triggering_sentence() -> None:
+    listings = lever.parse(load_fixture("lever/cobalt_cartography.json"), "cobalt-cartography")
+    by_title = {listing.title: listing for listing in listings}
+    evidence = by_title["Cartography Engineering Intern"].sponsorship_evidence
+    # The splitter treats "U.S." as a sentence boundary, so the matched
+    # fragment starts at "citizenship".
+    assert evidence == "citizenship is required for this position."
+    assert by_title["Geospatial Data Intern"].sponsorship_evidence is None  # unknown
+
+
 def test_fetch_allows_description_heavy_boards() -> None:
     from interninbox.fetch import Fetcher
 

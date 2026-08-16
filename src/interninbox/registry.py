@@ -66,6 +66,7 @@ def _label(seconds: int) -> str:
 
 
 _G, _L, _A, _S = "greenhouse", "lever", "ashby", "smartrecruiters"
+_W, _R = "workable", "recruitee"
 
 REGISTRY: tuple[RegistryCompany, ...] = (
     # ---- greenhouse, large ----
@@ -119,6 +120,15 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_G, "udemy", "Udemy", "large", ("edtech",)),
     RegistryCompany(_G, "block", "Block", "large", ("fintech",)),
     RegistryCompany(_G, "tripadvisor", "Tripadvisor", "large", ("travel",)),
+    # 2026-08-15 list harvest (mined from the Simplify list, live-verified):
+    RegistryCompany(_G, "janestreet", "Jane Street", "large", ("quant",), top=True),
+    RegistryCompany(_G, "drweng", "DRW", "large", ("quant",), top=True),
+    RegistryCompany(_G, "virtu", "Virtu Financial", "large", ("quant",)),
+    RegistryCompany(_G, "asteraearlycareer2026", "Astera Labs", "large", ("hardware",)),
+    RegistryCompany(_G, "axontalentcommunity", "Axon", "large", ("security",)),
+    RegistryCompany(_G, "sharkninjaoperatingllc", "SharkNinja", "large", ("consumer",)),
+    RegistryCompany(_G, "appian", "Appian", "large", ("automation",)),
+    RegistryCompany(_G, "ginkgobioworks", "Ginkgo Bioworks", "large", ("biotech",)),
     # ---- greenhouse, startup ----
     RegistryCompany(_G, "vercel", "Vercel", "startup", ("devtools",), top=True),
     RegistryCompany(_G, "brex", "Brex", "startup", ("fintech",), top=True),
@@ -133,6 +143,33 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_G, "gongio", "Gong", "startup", ("sales",)),
     RegistryCompany(_G, "postman", "Postman", "startup", ("devtools",)),
     RegistryCompany(_G, "circleci", "CircleCI", "startup", ("devtools",)),
+    # 2026-08-15 list harvest (mined from the Simplify list, live-verified):
+    RegistryCompany(_G, "neuralink", "Neuralink", "startup", ("health", "hardware"), top=True),
+    RegistryCompany(_G, "figureai", "Figure", "startup", ("robotics", "ai"), top=True),
+    RegistryCompany(_G, "togetherai", "Together AI", "startup", ("ai", "infra")),
+    RegistryCompany(_G, "cresta", "Cresta", "startup", ("ai",)),
+    RegistryCompany(_G, "lilasciences", "Lila Sciences", "startup", ("ai", "biotech")),
+    RegistryCompany(_G, "tenstorrentuniversity", "Tenstorrent", "startup", ("ai", "hardware")),
+    RegistryCompany(_G, "astranis", "Astranis", "startup", ("aerospace",)),
+    RegistryCompany(_G, "vardaspace", "Varda Space", "startup", ("aerospace",)),
+    RegistryCompany(_G, "thenuclearcompany", "The Nuclear Company", "startup", ("energy",)),
+    RegistryCompany(_G, "later", "Later", "startup", ("marketing",)),
+    RegistryCompany(_G, "integrainterns", "Integra FEC", "startup", ("research",)),
+    RegistryCompany(_G, "sevenresearch", "Seven Research", "startup"),
+    RegistryCompany(_G, "dvtrading", "DV Trading", "startup", ("quant",)),
+    RegistryCompany(_G, "chicagotradingcampus", "Chicago Trading Company", "startup", ("quant",)),
+    RegistryCompany(_G, "mwinternshipprogram", "Marshall Wace", "startup", ("quant",)),
+    RegistryCompany(_G, "transmarketgroup", "TransMarket Group", "startup", ("quant",)),
+    RegistryCompany(
+        _G, "walleyecapital-external-students", "Walleye Capital", "startup", ("quant",)
+    ),
+    RegistryCompany(
+        _G, "aquaticcapitalmanagement", "Aquatic Capital Management", "startup", ("quant",)
+    ),
+    RegistryCompany(_G, "voloridgeinvestmentmanagement", "Voloridge", "startup", ("quant",)),
+    RegistryCompany(_G, "mavensecuritiesholdingltd", "Maven Securities", "startup", ("quant",)),
+    RegistryCompany(_G, "blackedgecapital", "BlackEdge Capital", "startup", ("quant",)),
+    RegistryCompany(_G, "hyannisportresearch", "Hyannis Port Research", "startup", ("fintech",)),
     # ---- lever ----
     RegistryCompany(_L, "plaid", "Plaid", "large", ("fintech",), top=True),
     RegistryCompany(_L, "palantir", "Palantir", "large", ("data",), top=True),
@@ -145,6 +182,14 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_L, "outreach", "Outreach", "startup", ("sales",)),
     RegistryCompany(_L, "highspot", "Highspot", "startup", ("sales",)),
     RegistryCompany(_L, "veeva", "Veeva", "large", ("health",)),
+    # 2026-08-15 list harvest (mined from the Simplify list, live-verified):
+    RegistryCompany(_L, "tri", "Toyota Research Institute", "large", ("automotive",)),
+    RegistryCompany(_L, "xsolla", "Xsolla", "startup", ("gaming",)),
+    RegistryCompany(_L, "belvederetrading", "Belvedere Trading", "startup", ("quant",)),
+    RegistryCompany(_L, "hermeus", "Hermeus", "startup", ("aerospace",)),
+    RegistryCompany(_L, "waabi", "Waabi", "startup", ("automotive", "ai")),
+    RegistryCompany(_L, "magnetforensics", "Magnet Forensics", "startup", ("security",)),
+    RegistryCompany(_L, "calstart", "CALSTART", "startup", ("energy",)),
     # ---- ashby, top startups & scale-ups ----
     RegistryCompany(_A, "openai", "OpenAI", "large", ("ai",), top=True),
     RegistryCompany(_A, "linear", "Linear", "startup", ("devtools",), top=True),
@@ -175,6 +220,23 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_A, "baseten", "Baseten", "startup", ("ai", "infra")),
     RegistryCompany(_A, "railway", "Railway", "startup", ("devtools",)),
     RegistryCompany(_A, "decagon", "Decagon", "startup", ("ai",)),
+    # 2026-08-15 list harvest (mined from the Simplify list, live-verified):
+    RegistryCompany(_A, "perplexity", "Perplexity AI", "startup", ("ai",), top=True),
+    RegistryCompany(
+        _A, "rivianvw.tech", "Rivian and VW Group Technologies", "large", ("automotive",)
+    ),
+    RegistryCompany(_A, "applied", "Applied Intuition", "startup", ("automotive", "ai")),
+    RegistryCompany(_A, "etched", "Etched", "startup", ("ai", "hardware")),
+    RegistryCompany(_A, "1x", "1X", "startup", ("robotics",)),
+    RegistryCompany(_A, "skydio", "Skydio", "startup", ("robotics",)),
+    RegistryCompany(_A, "persona.ai", "Persona AI", "startup", ("robotics",)),
+    RegistryCompany(_A, "base-power", "Base Power", "startup", ("energy",)),
+    RegistryCompany(_A, "tilderesearch", "Tilde Research", "startup", ("ai",)),
+    RegistryCompany(_A, "meshy", "Meshy", "startup", ("ai",)),
+    RegistryCompany(_A, "opusclip", "OpusClip", "startup", ("ai",)),
+    RegistryCompany(_A, "netic", "Cybernetic Labs", "startup", ("ai",)),
+    RegistryCompany(_A, "melotech", "Melotech", "startup"),
+    RegistryCompany(_A, "super.com", "Super", "startup", ("consumer",)),
     # ---- smartrecruiters (enterprise) ----
     RegistryCompany(_S, "BoschGroup", "Bosch", "large", ("hardware",), top=True),
     RegistryCompany(_S, "ServiceNow", "ServiceNow", "large", ("infra",), top=True),
@@ -182,4 +244,21 @@ REGISTRY: tuple[RegistryCompany, ...] = (
     RegistryCompany(_S, "Visa", "Visa", "large", ("fintech",), top=True),
     RegistryCompany(_S, "McDonaldsCorporation", "McDonald's", "large", ("consumer",)),
     RegistryCompany(_S, "Experian", "Experian", "large", ("fintech",)),
+    # 2026-08-15 list harvest (mined from the Simplify list, live-verified):
+    RegistryCompany(_S, "Canva", "Canva", "large", ("design",), top=True),
+    RegistryCompany(_S, "WesternDigital", "Western Digital", "large", ("hardware",)),
+    RegistryCompany(_S, "NorthwesternMutual", "Northwestern Mutual", "large", ("insurance",)),
+    RegistryCompany(
+        _S, "LLNL", "Lawrence Livermore National Laboratory", "large", ("research",)
+    ),
+    # ---- workable ----
+    # 2026-08-15 adapter probe (mined from the Simplify list, live-verified):
+    RegistryCompany(_W, "thorlabs", "Thorlabs", "large", ("hardware",)),
+    RegistryCompany(_W, "pony-dot-ai", "Pony.ai", "large", ("automotive", "ai")),
+    RegistryCompany(_W, "onlogic-inc", "OnLogic", "startup", ("hardware",)),
+    # ---- recruitee ----
+    # 2026-08-15 adapter probe (intern-rich EU/UK boards, live-verified):
+    RegistryCompany(_R, "8advisory", "8advisory", "startup", ("consulting",)),
+    RegistryCompany(_R, "framestore", "Framestore", "large", ("media",)),
+    RegistryCompany(_R, "hostaway", "Hostaway", "startup", ("travel",)),
 )

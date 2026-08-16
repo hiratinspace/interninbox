@@ -4,36 +4,36 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import datetime as dt
 import os
+import re
 import sys
 import time
-import urllib.parse
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import httpx
 
-from interninbox import __version__, banner, wizard
+from interninbox import __version__, banner, notify, wizard
 from interninbox import companies as companies_mod
-from interninbox import registry as registry_mod
-from interninbox import sources as sources_mod
-from interninbox.adapters import ADAPTERS, usajobs
 from interninbox.config import (
     DEFAULT_CONFIG_NAME,
     Company,
     Config,
     ConfigError,
-    Filters,
     load_config,
 )
 from interninbox.fetch import Fetcher
-from interninbox.filters import matches
-from interninbox.freshness import apply_since, parse_since
-from interninbox.locations import expand_location_terms
-from interninbox.models import AdapterError, Listing, ScanResult
+from interninbox.freshness import parse_since
+from interninbox.models import Listing, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
-from interninbox.roles import expand_roles
-from interninbox.state import STATE_FILE_NAME, default_state_path, load_state
+from interninbox.scan import (
+    dedupe_listings,
+    effective_filters,
+    run_scan,
+    scan_boards,
+)
+from interninbox.state import STATE_FILE_NAME, default_state_path
 
 
 def entrypoint() -> None:  # pragma: no cover - thin wrapper for the console script
@@ -75,6 +75,31 @@ def _since_arg(text: str) -> object:
         return parse_since(text)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+# watch never polls faster than this: job boards do not change that often,
+# and neither should our traffic against them.
+WATCH_INTERVAL_FLOOR = dt.timedelta(minutes=15)
+_INTERVAL = re.compile(r"^(\d+)([mhdw])$")
+_INTERVAL_UNIT_MINUTES = {"m": 1, "h": 60, "d": 60 * 24, "w": 60 * 24 * 7}
+
+
+def _interval_arg(text: str) -> dt.timedelta:
+    """--interval values, --since style plus minutes; enforces the 15m floor."""
+    match = _INTERVAL.match(text.strip())
+    if not match:
+        raise argparse.ArgumentTypeError(
+            f"invalid --interval value {text!r}: use a number and unit, like 30m, 2h, 1d"
+        )
+    amount, unit = match.groups()
+    interval = dt.timedelta(minutes=int(amount) * _INTERVAL_UNIT_MINUTES[unit])
+    if interval < WATCH_INTERVAL_FLOOR:
+        raise argparse.ArgumentTypeError(
+            f"--interval {text.strip()} is below the 15m floor: watch polls public "
+            "job boards, and checking more often than every 15 minutes is not "
+            "polite. For a one-off check right now, run `interninbox scan --new-only`."
+        )
+    return interval
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -149,6 +174,43 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("name", help='company name, e.g. "Acme Corp"')
     find_parser.set_defaults(func=_cmd_find_board)
 
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="serve the scanner to AI agents over MCP (JSON-RPC on stdin/stdout)",
+    )
+    mcp_parser.set_defaults(func=_cmd_mcp)
+
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="re-scan on an interval and notify about new listings (Ctrl-C to stop)",
+    )
+    watch_parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(DEFAULT_CONFIG_NAME),
+        help=f"path to the config file (default: ./{DEFAULT_CONFIG_NAME})",
+    )
+    watch_parser.add_argument(
+        "--interval",
+        type=_interval_arg,
+        default=dt.timedelta(minutes=30),
+        metavar="WINDOW",
+        help="time between checks (30m, 2h, 1d; default 30m, floor 15m)",
+    )
+    watch_parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="skip desktop notifications; keep the per-cycle lines and tables",
+    )
+    watch_parser.add_argument(
+        "--state",
+        type=Path,
+        default=None,
+        help="path to the seen-listings state file (shared with `scan --new-only`; "
+        "default: derived from the config name)",
+    )
+    watch_parser.set_defaults(func=_cmd_watch)
+
     return parser
 
 
@@ -159,14 +221,21 @@ def main(
     sleep: Callable[[float], None] = time.sleep,
     env: Mapping[str, str] | None = None,
     input_fn: Callable[[str], str] | None = None,
+    notifier: Callable[[str, str], None] | None = None,
 ) -> int:
-    """CLI entry. `transport`, `sleep`, `env`, `input_fn` are injectable for tests."""
+    """CLI entry. `transport`, `sleep`, `env`, `input_fn`, and `notifier` (the
+    watch notification sink, default `notify.send`) are injectable for tests."""
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         resolved_env = env if env is not None else os.environ
         return args.func(
-            args, transport=transport, sleep=sleep, env=resolved_env, input_fn=input_fn
+            args,
+            transport=transport,
+            sleep=sleep,
+            env=resolved_env,
+            input_fn=input_fn,
+            notifier=notifier,
         )
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -224,7 +293,8 @@ def _cmd_find_board(
             f"no board found for {args.name!r} on the supported ATSes. The slug may "
             "be unusual: open the company's careers page and read the URL "
             "(job-boards.greenhouse.io/<slug>, jobs.lever.co/<slug>, "
-            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>).",
+            "jobs.ashbyhq.com/<slug>, jobs.smartrecruiters.com/<slug>, "
+            "apply.workable.com/<slug>, <slug>.recruitee.com).",
             file=sys.stderr,
         )
         return 1
@@ -234,67 +304,60 @@ def _cmd_find_board(
     return 0
 
 
-def _effective_filters(config: Config) -> Filters:
-    """Scan-time filter view: aliases expanded, role presets merged in."""
-    role_keywords = expand_roles(config.filters.roles)
-    merged = config.filters.match_keywords + tuple(
-        keyword for keyword in role_keywords
-        if keyword not in config.filters.match_keywords
-    )
-    return dataclasses.replace(
-        config.filters,
-        match_keywords=merged,
-        locations=expand_location_terms(config.filters.locations),
-    )
+def _cmd_mcp(
+    args: argparse.Namespace,
+    *,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
+    env: Mapping[str, str],
+    **_: object,
+) -> int:
+    """Speak MCP over stdio: stdin lines in, JSON-RPC lines out, nothing else.
 
-
-def _effective_companies(config: Config) -> tuple[Company, ...]:
-    """Config companies first, then the chosen registry tier (deduped)."""
-    companies = list(config.companies)
-    if config.registry != "none":
-        listed = {company.label for company in companies}
-        for entry in registry_mod.select(config.registry):
-            company = Company(ats=entry.ats, slug=entry.slug)
-            if company.label not in listed:
-                listed.add(company.label)
-                companies.append(company)
-    return tuple(companies)
-
-
-def _normalize_url(url: str) -> str:
-    parts = urllib.parse.urlsplit(url)
-    host = parts.netloc.lower().removeprefix("www.")
-    return f"{host}{parts.path.rstrip('/')}"
-
-
-def _dedupe_listings(listings: list[Listing]) -> list[Listing]:
-    """Collapse the same posting seen via a board AND a community list.
-
-    The direct board version wins (fresher title and locations), but inherits
-    any eligibility metadata only the list knew (sponsorship, terms, degrees).
-    Order-preserving; first occurrence keeps its position.
+    stdout carries only protocol lines (no banner, flushed per line so the
+    client never waits on a buffer) and stderr stays silent. EOF ends the
+    loop with 0; Ctrl-C exits quietly with 130, without the "interrupted"
+    note an interactive scan prints (an MCP client owns this process, and
+    noise on shutdown would only alarm it).
     """
-    by_url: dict[str, int] = {}
-    kept: list[Listing] = []
-    for listing in listings:
-        key = _normalize_url(listing.url)
-        index = by_url.get(key)
-        if index is None:
-            by_url[key] = len(kept)
-            kept.append(listing)
-            continue
-        existing = kept[index]
-        base, extra = (
-            (existing, listing) if listing.curated or not existing.curated
-            else (listing, existing)
-        )
-        kept[index] = dataclasses.replace(
-            base,
-            sponsorship=base.sponsorship or extra.sponsorship,
-            terms=base.terms or extra.terms,
-            degrees=base.degrees or extra.degrees,
-        )
-    return kept
+    from interninbox import mcp
+
+    def write_line(text: str) -> None:
+        print(text, flush=True)
+
+    try:
+        mcp.serve(sys.stdin.readline, write_line, transport=transport, sleep=sleep, env=env)
+    except KeyboardInterrupt:
+        return 130
+    return 0
+
+
+# The scan machinery lives in interninbox.scan now; these names stay on the
+# cli module (they are its historical surface, and tests import them here).
+_effective_filters = effective_filters
+_dedupe_listings = dedupe_listings
+
+
+def _scan_boards(
+    companies: tuple[Company, ...],
+    fetcher: Fetcher,
+    result: ScanResult,
+    *,
+    progress: bool = False,
+    content: bool = False,
+) -> None:
+    """Compatibility wrapper over scan.scan_boards with the old bool progress."""
+    scan_boards(
+        companies,
+        fetcher,
+        result,
+        progress=_stderr_line if progress else None,
+        content=content,
+    )
+
+
+def _stderr_line(line: str) -> None:
+    print(line, file=sys.stderr, flush=True)
 
 
 def _cmd_scan(
@@ -304,6 +367,7 @@ def _cmd_scan(
     sleep: Callable[[float], None],
     env: Mapping[str, str],
     input_fn: Callable[[str], str] | None,
+    **_: object,
 ) -> int:
     # Brand banner: interactive terminals only, never on machine output, and
     # only to stderr so it can never corrupt piped --json / --markdown.
@@ -341,46 +405,25 @@ def _cmd_scan(
     else:
         config = load_config(args.config)
     state_path = args.state if args.state else default_state_path(args.config)
-    state = load_state(state_path)
-    if state.warning:
-        print(f"warning: {state.warning}", file=sys.stderr)
 
-    companies = _effective_companies(config)
-    filters = _effective_filters(config)
-    if len(companies) >= 20:
-        note = (
-            f"scanning {len(companies)} boards, roughly "
-            f"{registry_mod.estimate_label_for(companies)} at polite pacing"
-        )
-        if filters.require_sponsorship:
-            note += " (downloading descriptions for the sponsorship filter)"
-        print(note, file=sys.stderr)
+    show_progress = sys.stderr.isatty() and not args.quiet
 
-    progress = sys.stderr.isatty() and not args.quiet
-    result = ScanResult()
-    with Fetcher(transport=transport, sleep=sleep) as fetcher:
-        # Descriptions are only worth fetching when a filter reads them.
-        _scan_boards(
-            companies, fetcher, result, progress=progress, content=filters.require_sponsorship
-        )
-        _scan_usajobs(config, fetcher, env, result, progress=progress)
-        _scan_sources(config, fetcher, result, progress=progress)
+    def progress(line: str, *, essential: bool = False) -> None:
+        # Essential lines (the state warning, the scale note) always print;
+        # per-company progress only on an interactive, non-quiet terminal.
+        if essential or show_progress:
+            _stderr_line(line)
 
-    result.listings = _dedupe_listings(result.listings)
-    result.listings_checked = len(result.listings)
-    matched = [listing for listing in result.listings if matches(listing, filters)]
-    if args.since is not None:
-        matched = apply_since(matched, args.since)
-    result.listings_matched = len(matched)
-    shown = [listing for listing in matched if state.is_new(listing)] if args.new_only else matched
-    # Record EVERYTHING fetched, flag or not, so "new" means "never fetched
-    # before": loosening a filter later cannot flood --new-only with old posts.
-    state.record(result.listings)
-    result.listings = shown
-    try:
-        state.save(state_path)
-    except OSError as exc:
-        result.warnings.append(f"could not write state file {state_path}: {exc}")
+    result = run_scan(
+        config,
+        new_only=args.new_only,
+        since=args.since,
+        transport=transport,
+        sleep=sleep,
+        env=env,
+        progress=progress,
+        state_path=state_path,
+    )
 
     for note in result.notes:
         print(note, file=sys.stderr)
@@ -410,72 +453,88 @@ def _cmd_scan(
     return 0
 
 
-def _scan_boards(
-    companies: tuple[Company, ...],
-    fetcher: Fetcher,
-    result: ScanResult,
+def _format_interval(interval: dt.timedelta) -> str:
+    """A timedelta back in --interval spelling: 30m, 2h, 1d."""
+    minutes = int(interval.total_seconds() // 60)
+    if minutes % (60 * 24) == 0:
+        return f"{minutes // (60 * 24)}d"
+    if minutes % 60 == 0:
+        return f"{minutes // 60}h"
+    return f"{minutes}m"
+
+
+def _notification_body(listings: list[Listing]) -> str:
+    """Up to three titles for the notification body, then a remainder count."""
+    titles = [listing.title for listing in listings[:3]]
+    remaining = len(listings) - len(titles)
+    if remaining > 0:
+        titles.append(f"and {remaining} more")
+    return ", ".join(titles)
+
+
+def _essential_progress(line: str, *, essential: bool = False) -> None:
+    """Watch-mode progress sink: essential lines only (a per-company line
+    every cycle would drown the feed the loop exists to produce)."""
+    if essential:
+        _stderr_line(line)
+
+
+def _cmd_watch(
+    args: argparse.Namespace,
     *,
-    progress: bool = False,
-    content: bool = False,
-) -> None:
-    total = len(companies)
-    for index, company in enumerate(companies, start=1):
-        if progress:
-            print(f"[{index}/{total}] {company.label} ...", file=sys.stderr, flush=True)
-        adapter_fetch = ADAPTERS[company.ats]
-        try:
-            listings = adapter_fetch(
-                fetcher, company.slug, content=content, warn=result.warnings.append
-            )
-        except AdapterError as exc:
-            result.companies_failed += 1
-            result.warnings.append(f"{company.label}: {exc}")
-            continue
-        result.companies_scanned += 1
-        result.listings.extend(listings)
-
-
-def _scan_sources(
-    config: Config, fetcher: Fetcher, result: ScanResult, *, progress: bool = False
-) -> None:
-    for name in config.sources:
-        if progress:
-            print(f"[source] {name} ...", file=sys.stderr, flush=True)
-        try:
-            listings = sources_mod.fetch_source(fetcher, name, warn=result.warnings.append)
-        except AdapterError as exc:
-            result.companies_failed += 1
-            result.warnings.append(f"source {name}: {exc}")
-            continue
-        result.sources_scanned += 1
-        result.listings.extend(listings)
-
-
-def _scan_usajobs(
-    config: Config,
-    fetcher: Fetcher,
+    transport: httpx.BaseTransport | None,
+    sleep: Callable[[float], None],
     env: Mapping[str, str],
-    result: ScanResult,
-    *,
-    progress: bool = False,
-) -> None:
-    cfg = config.usajobs
-    if not cfg.enabled:
-        return
-    api_key = env.get(cfg.api_key_env, "").strip()
-    if not api_key:
-        result.notes.append(
-            f"usajobs: enabled but {cfg.api_key_env} is not set, skipping "
-            "(get a free key at https://developer.usajobs.gov/apirequest/)"
+    notifier: Callable[[str, str], None] | None,
+    **_: object,
+) -> int:
+    """A polite foreground loop over the shared scan core, new-only implied.
+
+    Each cycle scans, prints a timestamped new-count line to stderr, shows any
+    new listings as the usual table on stdout, sends one best-effort desktop
+    notification per non-empty batch, then sleeps the interval. Ctrl-C (during
+    the scan or the sleep) is the intended exit: main() turns it into 130.
+    """
+    if not (sys.stdin.isatty() and sys.stderr.isatty()):
+        print(
+            "error: watch needs an interactive terminal (it is a foreground "
+            "loop, not a daemon). For unattended runs, schedule "
+            "`interninbox scan --new-only` with cron instead.",
+            file=sys.stderr,
         )
-        return
-    if progress:
-        print("[usajobs] data.usajobs.gov ...", file=sys.stderr, flush=True)
-    try:
-        listings = usajobs.fetch(fetcher, cfg, api_key, warn=result.warnings.append)
-    except AdapterError as exc:
-        result.companies_failed += 1
-        result.warnings.append(f"usajobs: {exc}")
-        return
-    result.companies_scanned += 1
-    result.listings.extend(listings)
+        return 1
+    config = load_config(args.config)
+    state_path = args.state if args.state else default_state_path(args.config)
+    send = notifier if notifier is not None else notify.send
+    interval_seconds = args.interval.total_seconds()
+    _stderr_line(
+        f"watching for new internships every {_format_interval(args.interval)}, "
+        "Ctrl-C to stop"
+    )
+    while True:
+        result = run_scan(
+            config,
+            new_only=True,
+            transport=transport,
+            sleep=sleep,
+            env=env,
+            progress=_essential_progress,
+            state_path=state_path,
+        )
+        for note in result.notes:
+            _stderr_line(note)
+        for warning in result.warnings:
+            _stderr_line(f"warning: {warning}")
+        count = len(result.listings)
+        noun = "internship" if count == 1 else "internships"
+        stamp = time.strftime("%H:%M:%S")
+        _stderr_line(f"[{stamp}] {count} new {noun}")
+        if result.listings:
+            hyperlinks = sys.stdout.isatty() and not env.get("NO_COLOR")
+            print(format_table(result, hyperlinks=hyperlinks), flush=True)
+            if not args.no_notify:
+                send(
+                    f"interninbox: {count} new {noun}",
+                    _notification_body(result.listings),
+                )
+        sleep(interval_seconds)
