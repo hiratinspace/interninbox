@@ -67,3 +67,35 @@ def test_country_alias_us_never_matches_the_pronoun() -> None:
         filters = Filters(locations=expand_location_terms((term,)))
         assert not matches(make_listing(locations=("Come build with us",)), filters), term
         assert matches(make_listing(locations=("New York, US",)), filters), term
+
+
+def test_united_states_matches_any_us_location() -> None:
+    # Boards almost always name a state or city, not the country, so filtering
+    # "United States" must reach US listings that never write the country.
+    filters = Filters(locations=expand_location_terms(("United States",)))
+    for board_location in (
+        "Foster City, CA",
+        "San Francisco, California, New York, New York",
+        "Austin, Texas, United States",
+        "Seattle, WA",
+        "Farmington Hills, MI, United States",
+    ):
+        assert matches(make_listing(locations=(board_location,)), filters), board_location
+
+
+def test_united_states_does_not_match_foreign_locations() -> None:
+    filters = Filters(locations=expand_location_terms(("United States",)))
+    for board_location in (
+        "Ovar, Portugal",
+        "London, United Kingdom",
+        "Warszawa, Poland",
+        "Singapore",
+        "Ulm, BW, Germany",
+    ):
+        assert not matches(make_listing(locations=(board_location,)), filters), board_location
+
+
+def test_usa_us_and_america_all_expand_to_states() -> None:
+    for term in ("USA", "US", "America"):
+        filters = Filters(locations=expand_location_terms((term,)))
+        assert matches(make_listing(locations=("Boston, MA",)), filters), term

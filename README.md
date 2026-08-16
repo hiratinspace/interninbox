@@ -66,7 +66,20 @@ with the installer's `--force` (pipx / uv tool) or `--force-reinstall` (pip).
 
 ## Quickstart
 
-Install, then just run:
+Everything in one line, no config, no setup (works with `uvx` too):
+
+```sh
+interninbox scan --role software --location "New York"
+```
+
+That scans the top tier of the [registry](#the-company-registry) for software
+internships in New York and prints them. Swap in any [preset](#role-presets)
+and place: `--role cybersecurity --location California`, `--role finance
+--location "United States"`. Add `--company greenhouse:stripe` to point at your
+own boards, `--source simplify` to fold in the [community list](#community-list-sources),
+or `--registry all` to sweep every curated company.
+
+Or just run it and answer a few questions:
 
 ```sh
 interninbox scan
@@ -109,6 +122,11 @@ your last scan.
 
 | Flag | Effect |
 | --- | --- |
+| `--role PRESET`, `-r` | Only roles in this [preset](#role-presets) (repeatable). Overrides the config's `roles` |
+| `--location PLACE`, `-l` | Only these locations: a country, US state, or city (repeatable). Overrides the config's `locations` |
+| `--company ATS:SLUG` | Scan this board, e.g. `greenhouse:stripe` (repeatable). Overrides the config's `companies` |
+| `--registry TIER` | Also sweep a registry tier (`none`, `top`, `all`, `large`, `startups`). Overrides the config |
+| `--source NAME` | Also scan a [community list](#community-list-sources), e.g. `simplify` (repeatable). Overrides the config's `sources` |
 | `--config PATH` | Use a config other than `./interninbox.toml` |
 | `--json` | Emit machine-readable JSON instead of the table |
 | `--markdown` | Emit a Markdown table (paste it anywhere) |

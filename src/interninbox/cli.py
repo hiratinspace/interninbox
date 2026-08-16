@@ -22,17 +22,21 @@ from interninbox.config import (
     Config,
     ConfigError,
     load_config,
+    parse_company,
 )
 from interninbox.fetch import Fetcher
 from interninbox.freshness import parse_since
 from interninbox.models import Listing, ScanResult
 from interninbox.output import format_json, format_markdown, format_table
+from interninbox.registry import TIERS
+from interninbox.roles import ROLE_PRESETS
 from interninbox.scan import (
     dedupe_listings,
     effective_filters,
     run_scan,
     scan_boards,
 )
+from interninbox.sources import is_known_source, known_source_names
 from interninbox.state import STATE_FILE_NAME, default_state_path
 
 
@@ -137,6 +141,43 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"path to the seen-listings state file (default: {STATE_FILE_NAME} next to "
         "the config, or a name derived from a non-default config filename)",
+    )
+    scan_parser.add_argument(
+        "--role",
+        "-r",
+        action="append",
+        metavar="PRESET",
+        choices=sorted(ROLE_PRESETS),
+        help="only roles in this preset (repeatable); overrides the config's roles. "
+        "Run `interninbox roles` to list presets",
+    )
+    scan_parser.add_argument(
+        "--location",
+        "-l",
+        action="append",
+        metavar="PLACE",
+        help="only these locations: a country, US state, or city (repeatable); "
+        "overrides the config's locations",
+    )
+    scan_parser.add_argument(
+        "--company",
+        action="append",
+        metavar="ATS:SLUG",
+        help='scan this board, e.g. "greenhouse:stripe" (repeatable); '
+        "overrides the config's companies",
+    )
+    scan_parser.add_argument(
+        "--registry",
+        choices=("none", *TIERS),
+        help="also sweep a registry tier (none, top, all, large, startups); "
+        "overrides the config",
+    )
+    scan_parser.add_argument(
+        "--source",
+        action="append",
+        metavar="NAME",
+        help='also scan a community list, e.g. "simplify" (repeatable); '
+        "overrides the config's sources",
     )
     scan_parser.add_argument(
         "--interactive",
@@ -360,6 +401,50 @@ def _stderr_line(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
+def _quick_overrides_given(args: argparse.Namespace) -> bool:
+    """True when any of the one-shot scan flags was passed."""
+    return bool(args.role or args.location or args.company or args.registry or args.source)
+
+
+def _apply_quick_overrides(config: Config, args: argparse.Namespace) -> Config:
+    """Apply the one-shot scan flags on top of `config`.
+
+    Each flag replaces only the field it names, so `--role software` against an
+    existing config keeps that config's companies and just changes the role
+    filter. A flag-only run with nothing to scan (no companies, sources, or
+    registry, and none configured) falls back to the top tier so the command
+    still returns something useful instead of "0 companies".
+    """
+    filters = config.filters
+    if args.role:
+        filters = dataclasses.replace(filters, roles=tuple(args.role))
+    if args.location:
+        filters = dataclasses.replace(filters, locations=tuple(args.location))
+    changes: dict[str, object] = {}
+    if filters is not config.filters:
+        changes["filters"] = filters
+    if args.company:
+        changes["companies"] = tuple(parse_company(entry) for entry in args.company)
+    if args.registry is not None:
+        changes["registry"] = args.registry
+    if args.source:
+        for name in args.source:
+            if not is_known_source(name):
+                known = ", ".join(known_source_names())
+                raise ConfigError(f"unknown source {name!r}; known sources: {known}")
+        changes["sources"] = tuple(args.source)
+    updated = dataclasses.replace(config, **changes)
+    nothing_to_scan = (
+        not updated.companies
+        and not updated.sources
+        and updated.registry == "none"
+        and not updated.usajobs.enabled
+    )
+    if nothing_to_scan:
+        updated = dataclasses.replace(updated, registry="top")
+    return updated
+
+
 def _cmd_scan(
     args: argparse.Namespace,
     *,
@@ -374,8 +459,9 @@ def _cmd_scan(
     if sys.stderr.isatty() and not (args.quiet or args.json or args.markdown):
         print(banner.render_banner(color=not env.get("NO_COLOR")), file=sys.stderr)
 
+    quick = _quick_overrides_given(args)
     wizard_wants = args.interactive or (
-        not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
+        not quick and not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
     )
     answers = None
     if wizard_wants:
@@ -402,6 +488,11 @@ def _cmd_scan(
             registry=base.registry if answers.tier == "config" else answers.tier,
             sources=("simplify",) if answers.include_list else base.sources,
         )
+    elif quick:
+        # Flags provided: start from the config if there is one, otherwise an
+        # empty config, then let the flags override the fields they name.
+        base = load_config(args.config) if args.config.is_file() else Config(companies=())
+        config = _apply_quick_overrides(base, args)
     else:
         config = load_config(args.config)
     state_path = args.state if args.state else default_state_path(args.config)
