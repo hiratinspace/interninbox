@@ -401,6 +401,13 @@ def _stderr_line(line: str) -> None:
     print(line, file=sys.stderr, flush=True)
 
 
+def _prompt_stderr(prompt: str) -> str:
+    """`input()` with the prompt on stderr, so wizard prompts can never
+    corrupt piped or redirected stdout (--json, --markdown, `> file`)."""
+    print(prompt, end="", file=sys.stderr, flush=True)
+    return input()
+
+
 def _quick_overrides_given(args: argparse.Namespace) -> bool:
     """True when any of the one-shot scan flags was passed."""
     return bool(args.role or args.location or args.company or args.registry or args.source)
@@ -460,12 +467,23 @@ def _cmd_scan(
         print(banner.render_banner(color=not env.get("NO_COLOR")), file=sys.stderr)
 
     quick = _quick_overrides_given(args)
+    if args.interactive and quick:
+        raise ConfigError(
+            "--interactive cannot be combined with --role/--location/--company/"
+            "--registry/--source; the wizard asks those questions itself"
+        )
+    # The auto-wizard never fires on machine output: its prompts would race
+    # the --json / --markdown document on a redirected stdout.
     wizard_wants = args.interactive or (
-        not quick and not args.config.is_file() and sys.stdin.isatty() and sys.stderr.isatty()
+        not quick
+        and not args.config.is_file()
+        and not (args.json or args.markdown)
+        and sys.stdin.isatty()
+        and sys.stderr.isatty()
     )
     answers = None
     if wizard_wants:
-        ask = input_fn if input_fn is not None else input
+        ask = input_fn if input_fn is not None else _prompt_stderr
         existing = load_config(args.config) if args.config.is_file() else None
         answers = wizard.run(
             input_fn=ask,
@@ -486,7 +504,9 @@ def _cmd_scan(
                 require_sponsorship=answers.require_sponsorship,
             ),
             registry=base.registry if answers.tier == "config" else answers.tier,
-            sources=("simplify",) if answers.include_list else base.sources,
+            # Yes keeps an already-configured (possibly season-pinned) source
+            # list, defaulting to the floating season; No really means no.
+            sources=(base.sources or ("simplify",)) if answers.include_list else (),
         )
     elif quick:
         # Flags provided: start from the config if there is one, otherwise an
@@ -530,7 +550,7 @@ def _cmd_scan(
         print(format_table(result, hyperlinks=hyperlinks))
 
     if answers is not None and not args.config.is_file() and answers.tier != "config":
-        ask = input_fn if input_fn is not None else input
+        ask = input_fn if input_fn is not None else _prompt_stderr
         reply = ask(f"Save these choices to {args.config}? [y/N] ").strip().lower()
         if reply in ("y", "yes"):
             args.config.write_text(wizard.render_config(answers), encoding="utf-8")

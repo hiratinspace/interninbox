@@ -47,8 +47,14 @@ class AdapterError(Exception):
     """A board fetch or parse failed for one company.
 
     Callers report it as a one-line warning and keep scanning; one broken
-    board never aborts the whole run.
+    board never aborts the whole run. `status` carries the HTTP status code
+    when one caused the failure (None for network/parse errors), so callers
+    can tell "does not exist" (404) from "temporarily broken" (5xx).
     """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass

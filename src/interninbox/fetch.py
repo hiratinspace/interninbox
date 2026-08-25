@@ -216,7 +216,10 @@ class Fetcher:
                     if response.status_code == 304 and etag:
                         return None, etag
                     if response.status_code >= 400:
-                        raise AdapterError(_client_error(response.status_code, host))
+                        raise AdapterError(
+                            _client_error(response.status_code, host),
+                            status=response.status_code,
+                        )
                     if response.status_code >= 300:
                         raise AdapterError(
                             f"unexpected redirect (HTTP {response.status_code}) from {host}"

@@ -11,8 +11,17 @@ from __future__ import annotations
 
 import re
 
+from interninbox.adapters import ashby, lever
 from interninbox.fetch import Fetcher
 from interninbox.models import AdapterError
+
+# Lever and Ashby ship full descriptions in every response, so a large
+# company's board exceeds the Fetcher's default cap and the probe would
+# report a real board as missing. Probe with the adapters' own caps.
+_PROBE_MAX_BYTES = {
+    "lever": lever.BOARD_MAX_BYTES,
+    "ashby": ashby.BOARD_MAX_BYTES,
+}
 
 _PROBES = {
     "greenhouse": "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs",
@@ -55,7 +64,10 @@ def find_boards(fetcher: Fetcher, name: str) -> list[str]:
     for ats, template in _PROBES.items():
         for guess in _guesses(name):
             try:
-                fetcher.get_json(template.format(slug=guess))
+                fetcher.get_json(
+                    template.format(slug=guess),
+                    max_response_bytes=_PROBE_MAX_BYTES.get(ats),
+                )
             except AdapterError:
                 continue
             found.append(f"{ats}:{guess}")

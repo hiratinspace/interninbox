@@ -107,8 +107,11 @@ def fetch_source(
     spec = resolve_source(name, today)
     try:
         payload = _fetch_with_cache(fetcher, spec)
-    except AdapterError:
-        if name != "simplify":
+    except AdapterError as exc:
+        # Only a 404/410 means the next season's repo is not published yet.
+        # A transient failure (5xx, network) must NOT silently serve the
+        # year-old previous season's list with a misleading explanation.
+        if name != "simplify" or exc.status not in (404, 410):
             raise
         # The next season's repo may not be published yet: fall back one
         # season rather than failing the scan.

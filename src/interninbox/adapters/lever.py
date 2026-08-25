@@ -77,7 +77,12 @@ def _parse_posting(posting: dict[str, object], slug: str) -> Listing:
     posted_at: dt.datetime | None = None
     created_at = posting.get("createdAt")
     if isinstance(created_at, int | float) and not isinstance(created_at, bool):
-        posted_at = dt.datetime.fromtimestamp(created_at / 1000, tz=dt.UTC)
+        try:
+            posted_at = dt.datetime.fromtimestamp(created_at / 1000, tz=dt.UTC)
+        except (OverflowError, OSError, ValueError):
+            # An absurd epoch (or Infinity, which json.loads accepts) must
+            # not escape as a non-AdapterError and kill the whole scan.
+            posted_at = None
 
     title = str(posting["text"])
     description = posting.get("descriptionPlain") or posting.get("description") or ""

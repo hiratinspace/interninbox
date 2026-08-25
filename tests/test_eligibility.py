@@ -146,13 +146,22 @@ def test_evidence_for_citizenship_requirement() -> None:
 
 
 def test_evidence_is_the_fragment_the_splitter_saw() -> None:
-    # The sentence splitter treats the period in "U.S." as a boundary, so the
-    # classifier matches the trailing fragment; evidence reports that fragment
-    # honestly rather than reconstructing prose it never examined.
+    # The sentence splitter refuses to split inside "U.S." (a single-letter
+    # abbreviation), so the whole requirement sentence stays intact and the
+    # evidence reports it in full.
     text = "Work on maps. U.S. citizenship is required for this position."
     assert classify_sponsorship_with_evidence(text) == (
         CITIZENSHIP_REQUIRED,
-        "citizenship is required for this position.",
+        "U.S. citizenship is required for this position.",
+    )
+
+
+def test_dotted_citizenship_phrase_spanning_the_abbreviation() -> None:
+    # The most common phrasing puts "U.S." mid-pattern; a splitter that broke
+    # at "S." would make this unmatchable.
+    assert classify_sponsorship_with_evidence("Applicants must be a U.S. citizen.") == (
+        CITIZENSHIP_REQUIRED,
+        "Applicants must be a U.S. citizen.",
     )
 
 
