@@ -91,12 +91,14 @@ def fetch(
             continue
         if fetched >= WEBSITE_PAGE_CAP:
             truncated += 1
+            _keep_stale_entry(url, entry, fresh, listings)
             continue
         fetched += 1
         try:
             html = fetcher.get_text(url, max_response_bytes=PAGE_MAX_BYTES)
         except AdapterError:
             failures += 1
+            _keep_stale_entry(url, entry, fresh, listings)
             continue
         listing = None
         for posting in extract_job_postings(html):
@@ -118,6 +120,26 @@ def fetch(
         warn(f"website:{domain}: {failures} pages failed to fetch, skipped")
     _save_cache(domain, fresh)
     return listings
+
+
+def _keep_stale_entry(
+    url: str,
+    entry: dict | None,
+    fresh: dict[str, dict],
+    listings: list[Listing],
+) -> None:
+    """A page we could not refetch this scan (cap or fetch failure) keeps its
+    previous cache entry instead of being erased: its stale lastmod forces a
+    retry next scan, and its known listing is replayed rather than silently
+    vanishing from the results."""
+    if entry is None:
+        return
+    fresh[url] = entry
+    cached = entry.get("listing")
+    if isinstance(cached, dict):
+        listing = _listing_from_dict(cached)
+        if listing is not None:
+            listings.append(listing)
 
 
 # ---- sitemap walking ----

@@ -85,7 +85,11 @@ _REQUIREMENT = re.compile(_REQUIREMENT_MARKERS, re.IGNORECASE)
 _HEDGE = re.compile("|".join(_HEDGE_PATTERNS), re.IGNORECASE)
 _NEGATIVE = re.compile("|".join(_NEGATIVE_PATTERNS), re.IGNORECASE)
 _POSITIVE = re.compile("|".join(_POSITIVE_PATTERNS), re.IGNORECASE)
-_SENTENCE = re.compile(r"(?<=[.!?;])\s+|\n+")
+# The lookbehind refuses to split after a single-letter abbreviation
+# ("U.S.", "e.g."): a non-word char, one letter, then the period. Without
+# it, "must be a U.S. citizen" splits mid-phrase and the strong
+# citizenship patterns can never match their own most common phrasing.
+_SENTENCE = re.compile(r"(?<=[.!?;])(?<!\W[A-Za-z]\.)\s+|\n+")
 
 _TERM = re.compile(r"\b(spring|summer|fall|autumn|winter)\s+(20\d{2})\b", re.IGNORECASE)
 _TAG = re.compile(r"<[^>]+>")

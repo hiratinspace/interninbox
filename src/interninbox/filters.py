@@ -73,6 +73,21 @@ def has_internship_signal(title: str, include_keywords: tuple[str, ...] = ()) ->
     return any(keyword.lower() in lowered for keyword in include_keywords)
 
 
+def _whole_word_search(text: str, term: str) -> bool:
+    """Whole-word match; lookarounds only at word-character edges.
+
+    A term that starts or ends in a non-word character anchors itself:
+    `\\b` would make "c++" or ".net" unmatchable (no word boundary exists
+    next to "+" or "."), while ", CA" must still match "San Francisco, CA"
+    even though a word character precedes the comma.
+    """
+    if not term:
+        return False
+    prefix = r"(?<!\w)" if (term[0].isalnum() or term[0] == "_") else ""
+    suffix = r"(?!\w)" if (term[-1].isalnum() or term[-1] == "_") else ""
+    return re.search(f"{prefix}{re.escape(term)}{suffix}", text, re.IGNORECASE) is not None
+
+
 def matches_required_keywords(title: str, keywords: tuple[str, ...]) -> bool:
     """True when `title` contains at least one keyword as a whole word.
 
@@ -82,9 +97,7 @@ def matches_required_keywords(title: str, keywords: tuple[str, ...]) -> bool:
     """
     if not keywords:
         return True
-    return any(
-        re.search(rf"\b{re.escape(keyword)}\b", title, re.IGNORECASE) for keyword in keywords
-    )
+    return any(_whole_word_search(title, keyword) for keyword in keywords)
 
 
 def is_staff_role(title: str) -> bool:
@@ -115,17 +128,9 @@ def _passes_locations(listing: Listing, filters: Filters) -> bool:
 
 
 def _location_contains(location: str, want: str) -> bool:
-    """Whole-word location match; lookarounds only at word-character edges.
-
-    A term that starts or ends in punctuation anchors itself: ", CA" (an
-    alias expansion) must match "San Francisco, CA" even though a word
-    character precedes the comma, and "D.C." keeps matching as before.
-    """
-    if not want:
-        return False
-    prefix = r"(?<!\w)" if (want[0].isalnum() or want[0] == "_") else ""
-    suffix = r"(?!\w)" if (want[-1].isalnum() or want[-1] == "_") else ""
-    return re.search(f"{prefix}{re.escape(want)}{suffix}", location, re.IGNORECASE) is not None
+    """Whole-word location match: ", CA" (an alias expansion) must match
+    "San Francisco, CA", and "D.C." keeps matching as before."""
+    return _whole_word_search(location, want)
 
 
 def _passes_eligibility(listing: Listing, filters: Filters) -> bool:
@@ -166,8 +171,9 @@ def matches(listing: Listing, filters: Filters) -> bool:
             return False
     if not matches_required_keywords(listing.title, filters.match_keywords):
         return False
-    lowered = listing.title.lower()
-    if any(keyword.lower() in lowered for keyword in filters.exclude_keywords):
+    # Whole-word, like every other title check: a substring test would let
+    # an exclude of "ai" silently drop "Trainee" and "Maintenance" titles.
+    if any(_whole_word_search(listing.title, keyword) for keyword in filters.exclude_keywords):
         return False
     if not _passes_eligibility(listing, filters):
         return False
