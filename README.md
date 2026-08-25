@@ -20,22 +20,80 @@
 List your target companies once, then get every matching internship from their
 public job boards in one command. interninbox reads the documented public
 board APIs of **Greenhouse**, **Lever**, **Ashby**, **SmartRecruiters**,
-**Workable**, and **Recruitee**
-(the same endpoints each company's own careers page calls). It can also read
-the official **USAJOBS** API for federal Pathways internships.
+**Workable**, and **Recruitee** (the same endpoints each company's own careers
+page calls), plus the official **USAJOBS** API for federal Pathways
+internships.
+
+## Quickstart
+
+Everything in one line, no install and no config needed:
+
+```sh
+uvx interninbox scan --role software --location "New York"
+```
+
+That scans the top tier of the [company registry](#the-company-registry) for
+software internships in New York and prints them. Swap in any
+[role preset](#role-presets) and place (`--role cybersecurity --location
+California`, `--role finance --location "United States"`), point it at your
+own boards with `--company greenhouse:stripe`, fold in the
+[community list](#community-list-sources) with `--source simplify`, or sweep
+every curated company with `--registry all`.
+
+Prefer to be asked? Run `interninbox scan` with no flags on a fresh terminal
+and a short **wizard** asks where you want to work, which roles, and which
+companies, scans immediately, and offers to save your answers to
+`interninbox.toml`. Blank answers mean "no preference". The wizard only
+appears on a real terminal with no config; pipes and cron are never
+interrupted (pass `--interactive` to force it).
+
+Or set things up by hand:
+
+```sh
+interninbox init          # 1. write a starter interninbox.toml here
+interninbox companies     # 2. print the curated registry to copy from
+interninbox scan          # 3. scan every configured company
+```
+
+Re-run `interninbox scan` whenever you want fresh results, and add
+`--new-only` to see only what appeared since your last scan.
 
 ## Why interninbox
 
-- 🔒 **Private by design.** No accounts, no API keys, no LLMs, no telemetry. The only things ever written are your config and a local state file.
+- 🔒 **Private by design.** No accounts, no API keys, no LLMs, no telemetry. The only writes are your config and a local state file.
 - 📍 **Search by location.** A country, a US state, or a city, with smart aliases: `"California"` finds boards that wrote `"CA"`, and vice versa.
 - 🎯 **Search by role.** Nine curated presets (`software`, `cybersecurity`, `finance`, and more) or your own whole-word keywords.
-- 🛂 **Filter by eligibility.** `require_sponsorship = true` hides listings known to not sponsor visas or to require US citizenship, read from list metadata and job descriptions. Season (`terms`) and degree filters too.
-- 📋 **Scan the community lists.** `sources = ["simplify"]` pulls the SimplifyJobs seasonal list (thousands of curated internships across every employer, kept fresh by the community) in one polite request, and diffs it with `--new-only`.
-- 🏢 **100+ curated companies.** Big and small, every slug live-verified. Scan your own list, or sweep a whole tier of the registry.
-- 🧭 **First-run wizard.** No config? Answer three questions, get results, and optionally save them for next time.
-- 📬 **A personal feed.** `--new-only` shows just what appeared since your last scan; run it on a schedule and it becomes your morning internship digest.
-- 🤖 **Built for the AI era.** AI answers questions about internships; interninbox watches all of them. One command ([`interninbox mcp`](#use-interninbox-from-your-ai)) hands the whole scanner to Claude or any MCP-capable agent.
+- 🛂 **Filter by eligibility.** `require_sponsorship = true` hides listings known to not sponsor visas or to require US citizenship. Season and degree filters too.
+- 📋 **Scan the community lists.** `sources = ["simplify"]` pulls the SimplifyJobs seasonal list (thousands of curated internships) in one polite request.
+- 🏢 **100+ curated companies.** Big and small, every slug live-verified. Scan your own list or sweep a whole registry tier.
+- 🧭 **First-run wizard.** No config? Answer three questions, get results, optionally save them.
+- 📬 **A personal feed.** `--new-only` shows only what's new since your last scan; on a schedule it becomes your morning internship digest.
+- 🤖 **Built for the AI era.** One command ([`interninbox mcp`](#use-interninbox-from-your-ai)) hands the whole scanner to Claude or any MCP-capable agent.
 - 🤝 **Polite by construction.** Sequential, rate-limited requests, an honest User-Agent, documented public APIs only. No scraping.
+
+<details>
+<summary><b>Table of contents</b></summary>
+
+- [Install](#install)
+- [Commands](#commands)
+- [Configuration](#configuration)
+  - [Finding a company's slug](#finding-a-companys-slug)
+  - [Scanning a company website](#scanning-a-company-website)
+- [How matching works](#how-matching-works)
+- [Role presets](#role-presets)
+- [Eligibility filters](#eligibility-filters)
+- [The company registry](#the-company-registry)
+- [Community list sources](#community-list-sources)
+- [USAJOBS (optional)](#usajobs-optional)
+- [`--new-only` and the state file](#--new-only-and-the-state-file)
+- [Watch mode](#watch-mode)
+- [Use interninbox from your AI](#use-interninbox-from-your-ai)
+- [How a scan works](#how-a-scan-works)
+- [Scope, honestly](#scope-honestly)
+- [FAQ](#faq)
+- [Development](#development)
+
+</details>
 
 ## Install
 
@@ -49,9 +107,10 @@ Requires **Python 3.11+**. Installing straight from git works too
 (`pipx install git+https://github.com/hiratinspace/interninbox`), or run from a
 checkout with `uv sync && uv run interninbox --help`.
 
-### Updating
+<details>
+<summary><b>Updating an existing install</b></summary>
 
-Already have an older version? Update it the same way you installed it:
+Update the same way you installed:
 
 ```sh
 pipx upgrade interninbox            # if you used pipx
@@ -64,46 +123,7 @@ Then check with `interninbox --version`. Upgrades are safe: your
 upgrade insists you are already current but the version looks old, force it
 with the installer's `--force` (pipx / uv tool) or `--force-reinstall` (pip).
 
-## Quickstart
-
-Everything in one line, no config, no setup (works with `uvx` too):
-
-```sh
-interninbox scan --role software --location "New York"
-```
-
-That scans the top tier of the [registry](#the-company-registry) for software
-internships in New York and prints them. Swap in any [preset](#role-presets)
-and place: `--role cybersecurity --location California`, `--role finance
---location "United States"`. Add `--company greenhouse:stripe` to point at your
-own boards, `--source simplify` to fold in the [community list](#community-list-sources),
-or `--registry all` to sweep every curated company.
-
-Or just run it and answer a few questions:
-
-```sh
-interninbox scan
-```
-
-On a fresh terminal with no config, `scan` opens a short **wizard**. It asks
-where you want to work, which role types, and which companies (your own list,
-or a tier of the [registry](#the-company-registry) with a rough scan-time
-estimate), scans immediately, and offers to save your answers to
-`interninbox.toml` for next time. Blank answers mean "no preference." The
-wizard only appears on a real terminal with no config; cron jobs and pipes are
-never interrupted (pass `--interactive` to force it).
-
-Prefer to set things up by hand?
-
-```sh
-interninbox init          # 1. write a starter interninbox.toml here
-interninbox companies     # 2. print the curated registry to copy from
-interninbox scan          # 3. scan every configured company
-```
-
-Edit `interninbox.toml` between steps 2 and 3, then re-run `interninbox scan`
-whenever you want fresh results. Add `--new-only` to see only what's new since
-your last scan.
+</details>
 
 ## Commands
 
@@ -114,8 +134,8 @@ your last scan.
 | `interninbox companies` | Print the curated [registry](#the-company-registry) as ready-to-paste `ats:slug` entries, with each company's size and tags |
 | `interninbox roles` | Print the [role presets](#role-presets) and the exact keywords each expands to |
 | `interninbox find-board NAME` | Probe the supported ATSes for a company's board slug and print ready-to-paste `"ats:slug"` lines |
-| `interninbox mcp` | Serve the scanner to [AI agents over MCP](#use-interninbox-from-your-ai) (JSON-RPC on stdin/stdout; meant for MCP clients, not for typing into) |
-| `interninbox watch` | Re-scan on an interval in the foreground with a desktop notification per batch of new listings ([watch mode](#watch-mode); needs a terminal, cron users keep `scan --new-only`) |
+| `interninbox watch` | Re-scan on an interval with a desktop notification per batch of new listings ([watch mode](#watch-mode)) |
+| `interninbox mcp` | Serve the scanner to [AI agents over MCP](#use-interninbox-from-your-ai) (JSON-RPC on stdin/stdout) |
 | `interninbox --version` | Print the version |
 
 ### `scan` flags
@@ -127,14 +147,22 @@ your last scan.
 | `--company ATS:SLUG` | Scan this board, e.g. `greenhouse:stripe` (repeatable). Overrides the config's `companies` |
 | `--registry TIER` | Also sweep a registry tier (`none`, `top`, `all`, `large`, `startups`). Overrides the config |
 | `--source NAME` | Also scan a [community list](#community-list-sources), e.g. `simplify` (repeatable). Overrides the config's `sources` |
-| `--config PATH` | Use a config other than `./interninbox.toml` |
+| `--since WINDOW` | Show only listings posted within the window (`7d`, `36h`, `2w`); undated listings are kept |
+| `--new-only` | Show only listings not seen by a previous scan |
 | `--json` | Emit machine-readable JSON instead of the table |
 | `--markdown` | Emit a Markdown table (paste it anywhere) |
-| `--new-only` | Show only listings not seen by a previous scan |
+| `--config PATH` | Use a config other than `./interninbox.toml` |
 | `--state PATH` | Use a state file other than the one derived from the config name |
-| `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them: a one-shot override of `locations`, `roles`, and `registry` that leaves everything else untouched |
-| `--since WINDOW` | Show only listings posted within the window (`7d`, `36h`, `2w`); undated listings are kept |
+| `--interactive` | Ask location/role/company questions before scanning (automatic on a terminal when no config exists). With an existing config, the answers apply to that run only unless you save them |
 | `--quiet`, `-q` | Suppress the banner and per-company progress lines |
+
+Exit codes: `0` on success (a single failing company prints a one-line
+warning and never aborts the scan); `1` when the config is invalid or every
+company failed. On a real terminal, each result's URL is a clickable OSC 8
+hyperlink.
+
+<details>
+<summary><b>About the banner</b></summary>
 
 An interactive scan opens with the block wordmark ("intern" in white,
 "inbox" in blue, matching the logo), then prints per-company progress:
@@ -153,12 +181,9 @@ An interactive scan opens with the block wordmark ("intern" in white,
 It goes to `stderr` (never `stdout`), so piped `--json` / `--markdown` output
 stays clean. It appears only on a real terminal, honors `NO_COLOR`, uses a
 theme-proof 256-color blue, and vanishes under pipes, redirects, and cron.
-Pass `--quiet` to silence it (and the progress lines) anywhere. On a real
-terminal, each result's URL is a clickable OSC 8 hyperlink.
+Pass `--quiet` to silence it (and the progress lines) anywhere.
 
-Exit codes: `0` on success (a single company that fails prints a one-line
-warning and never aborts the scan); `1` when the config is invalid or every
-company failed.
+</details>
 
 ## Configuration
 
@@ -189,7 +214,8 @@ include_keywords = []
 # them. Their keywords merge into match_keywords. Example: roles = ["cybersecurity"].
 roles = []
 
-# Drop any listing whose title contains one of these (case-insensitive).
+# Drop any listing whose title contains one of these as a whole word
+# (case-insensitive).
 exclude_keywords = ["mechanical"]
 
 # Keep only listings whose location contains one of these as a whole word
@@ -215,6 +241,12 @@ keywords = ["software"]
 api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 ```
 
+A commented copy ships as
+[`interninbox.example.toml`](interninbox.example.toml).
+
+<details>
+<summary><b>Full key reference</b></summary>
+
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `companies` | list of `"ats:slug"` | required unless `registry`/`[usajobs]` is set | Boards to scan; `ats` is `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, or `website` (slug = a bare domain, see [Scanning a company website](#scanning-a-company-website)) |
@@ -223,7 +255,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 | `filters.include_keywords` | list of strings | `[]` | Extra title keywords OR-ed with the built-in internship signal (broadens) |
 | `filters.match_keywords` | list of strings | `[]` | Whole-word title keywords required on top of the signal (narrows) |
 | `filters.roles` | list of strings | `[]` | Named [role presets](#role-presets) whose keywords merge into `match_keywords` |
-| `filters.exclude_keywords` | list of strings | `[]` | Title substrings that drop a listing |
+| `filters.exclude_keywords` | list of strings | `[]` | Whole-word title keywords that drop a listing |
 | `filters.locations` | list of strings | `[]` | Whole-word location terms to keep; empty keeps everything |
 | `filters.remote_ok` | bool | `true` | Whether remote listings bypass the locations filter |
 | `filters.require_sponsorship` | bool | `false` | Hide listings [known](#eligibility-filters) to not sponsor visas or to require US citizenship |
@@ -234,8 +266,7 @@ api_key_env = "USAJOBS_API_KEY"  # environment variable holding your key
 | `usajobs.keywords` | list of strings | `[]` | Extra keyword filter for the USAJOBS query |
 | `usajobs.api_key_env` | string | `"USAJOBS_API_KEY"` | Environment variable holding your key |
 
-A commented copy ships as
-[`interninbox.example.toml`](interninbox.example.toml).
+</details>
 
 ### Finding a company's slug
 
@@ -330,6 +361,45 @@ into `match_keywords` (both mean "titles I want to see"), so `roles =
 friends. Nothing is magic: the command prints the keywords, and an unknown
 role name fails with the list of valid ones.
 
+## Eligibility filters
+
+The questions that actually disqualify an application get first-class
+filters:
+
+```toml
+[filters]
+require_sponsorship = true   # for international students
+terms = ["Summer 2027"]
+degrees = ["Bachelor's"]
+```
+
+- **`require_sponsorship = true`** hides listings *known* to not sponsor
+  visas or to require US citizenship. Signals come from community-list
+  metadata and from the job description itself: Lever, Ashby, and Recruitee
+  include descriptions in their normal responses, and Greenhouse and Workable
+  descriptions are fetched (only when this filter is on, since they inflate
+  each board fetch).
+  Classification is requirement-aware and sentence-scoped: "unable to
+  sponsor", "must not require sponsorship", "US citizenship is required", and
+  clearance/ITAR *requirements* disqualify, while hedged mentions ("clearance
+  preferred", "no sponsorship required") never do. A listing that says
+  nothing is **always kept**. USAJOBS listings count as citizenship-restricted
+  (federal Pathways positions are citizenship-limited). SmartRecruiters
+  postings carry no descriptions in the list API, so they stay unknown and
+  are always kept; the phrase lists are English-only, so non-English boards
+  also stay unknown.
+- **`terms`** keeps only the seasons you want, read from list metadata or
+  the title ("... Intern (Summer 2027)"). Unknown seasons pass.
+- **`degrees`** keeps only listings open to your level (list-source entries
+  carry this metadata). Unknown passes.
+
+The same data flows into `--json` output as `sponsorship` and `terms` fields
+on every listing, so scripts can post-process it. Each verdict also carries a
+`sponsorship_evidence` field showing where it came from: the description
+sentence that triggered it (trimmed to 160 characters), the list's own
+metadata value (like `list: "Does Not Offer Sponsorship"`), or
+`federal Pathways position` for USAJOBS. Unknown verdicts have no evidence.
+
 ## The company registry
 
 interninbox bundles a curated registry of 100+ internship-hiring companies
@@ -388,44 +458,19 @@ links out to each employer's own posting; interninbox never scrapes those
 hosts. A source that is unreachable degrades to one warning line and the rest
 of the scan continues.
 
-## Eligibility filters
+## USAJOBS (optional)
 
-The questions that actually disqualify an application get first-class
-filters:
+Federal Pathways internships come from the official USAJOBS Search API, which
+needs a free key:
 
-```toml
-[filters]
-require_sponsorship = true   # for international students
-terms = ["Summer 2027"]
-degrees = ["Bachelor's"]
-```
+1. Request one at <https://developer.usajobs.gov/apirequest/>.
+2. Export it: `export USAJOBS_API_KEY=...`.
+3. Set `[usajobs] enabled = true` and `email = "..."`.
 
-- **`require_sponsorship = true`** hides listings *known* to not sponsor
-  visas or to require US citizenship. Signals come from community-list
-  metadata and from the job description itself: Lever, Ashby, and Recruitee
-  include descriptions in their normal responses, and Greenhouse and Workable
-  descriptions are fetched (only when this filter is on, since they inflate
-  each board fetch).
-  Classification is requirement-aware and sentence-scoped: "unable to
-  sponsor", "must not require sponsorship", "US citizenship is required", and
-  clearance/ITAR *requirements* disqualify, while hedged mentions ("clearance
-  preferred", "no sponsorship required") never do. A listing that says
-  nothing is **always kept**. USAJOBS listings count as citizenship-restricted
-  (federal Pathways positions are citizenship-limited). SmartRecruiters
-  postings carry no descriptions in the list API, so they stay unknown and
-  are always kept; the phrase lists are English-only, so non-English boards
-  also stay unknown.
-- **`terms`** keeps only the seasons you want, read from list metadata or
-  the title ("... Intern (Summer 2027)"). Unknown seasons pass.
-- **`degrees`** keeps only listings open to your level (list-source entries
-  carry this metadata). Unknown passes.
-
-The same data flows into `--json` output as `sponsorship` and `terms` fields
-on every listing, so scripts can post-process it. Each verdict also carries a
-`sponsorship_evidence` field showing where it came from: the description
-sentence that triggered it (trimmed to 160 characters), the list's own
-metadata value (like `list: "Does Not Offer Sponsorship"`), or
-`federal Pathways position` for USAJOBS. Unknown verdicts have no evidence.
+Per USAJOBS's documented contract, requests must carry the registered email as
+the User-Agent; interninbox sends exactly that, for that host only. If
+`[usajobs]` is enabled but the key variable is unset, the scan skips it with an
+info line and carries on.
 
 ## `--new-only` and the state file
 
@@ -512,20 +557,6 @@ write your `--new-only` state file, so an agent poking around can never eat
 the listings from your personal feed. Any MCP-capable client works, not just
 Claude; point it at the `interninbox mcp` command over stdio.
 
-## USAJOBS (optional)
-
-Federal Pathways internships come from the official USAJOBS Search API, which
-needs a free key:
-
-1. Request one at <https://developer.usajobs.gov/apirequest/>.
-2. Export it: `export USAJOBS_API_KEY=...`.
-3. Set `[usajobs] enabled = true` and `email = "..."`.
-
-Per USAJOBS's documented contract, requests must carry the registered email as
-the User-Agent; interninbox sends exactly that, for that host only. If
-`[usajobs]` is enabled but the key variable is unset, the scan skips it with an
-info line and carries on.
-
 ## How a scan works
 
 ```mermaid
@@ -565,10 +596,9 @@ version: you run it, you own your data, and nothing phones home.
 ## FAQ
 
 **Why these ATSes?** Greenhouse, Lever, Ashby, SmartRecruiters, Workable, and
-Recruitee expose
-documented public board APIs designed for exactly this, and the community
-list covers employers on everything else. PRs welcome for any source with a
-documented public API.
+Recruitee expose documented public board APIs designed for exactly this, and
+the community list covers employers on everything else. PRs welcome for any
+source with a documented public API.
 
 **Does it store or send my data anywhere?** No. The only writes are your config
 and the local state file. There is no telemetry of any kind.
